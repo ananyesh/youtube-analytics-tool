@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.5 Initialized');
+    console.log('YT Analytics v2.6 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -197,14 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let maxViews = 0;
             const cleanedStats = rawStats.filter(s => {
                 if (s.subscribers === 0 && s.views === 0) return false;
-                
-                // Ensure non-decreasing (fix for data glitches)
-                if (s.subscribers < maxSubs) s.subscribers = maxSubs;
-                else maxSubs = s.subscribers;
-                
-                if (s.views < maxViews) s.views = maxViews;
-                else maxViews = s.views;
-                
                 return true;
             });
 
