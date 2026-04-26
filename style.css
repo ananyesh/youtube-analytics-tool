@@ -175,6 +175,20 @@ header {
     opacity: 0.8;
 }
 
+.version-tag {
+    display: inline-block;
+    vertical-align: middle;
+    font-size: 0.8rem;
+    font-family: var(--font-main);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    margin-left: 0.5rem;
+    font-weight: 500;
+    border: 1px solid var(--card-border);
+}
+
 .subtitle {
     color: var(--text-secondary);
     font-size: 1.1rem;
