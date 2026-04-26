@@ -471,10 +471,7 @@ header {
     font-weight: 800 !important;
 }
 
-.odometer.odometer-auto-theme .odometer-digit, 
-.odometer.odometer-theme-minimal .odometer-digit {
-    padding: 0 1px !important;
-}
+
 
 .stat-label {
     font-size: 0.75rem;
