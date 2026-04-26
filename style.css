@@ -452,6 +452,12 @@ header {
     backdrop-filter: blur(10px);
 }
 
+.chart-container {
+    position: relative;
+    height: 400px;
+    width: 100%;
+}
+
 .chart-header {
     display: flex;
     justify-content: space-between;
