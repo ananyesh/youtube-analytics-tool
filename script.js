@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.4 Initialized');
+    console.log('YT Analytics v2.5 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -517,12 +517,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     data: processedStats.map(s => ({ x: new Date(s.recorded_at), y: s[currentChartType] })),
                     borderColor: currentChartType === 'subscribers' ? '#ff4d4d' : '#2196f3',
                     borderWidth: 3,
-                    pointRadius: 0,
+                    pointRadius: 2,
                     pointHoverRadius: 6,
                     fill: true,
                     backgroundColor: gradient,
                     tension: 0.3,
-                    spanGaps: false
+                    spanGaps: true
                 }]
             },
             options: {
@@ -604,11 +604,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 data: processed.map(s => ({ x: new Date(s.recorded_at), y: s[compChartType] })),
                 borderColor: colors[i % colors.length],
                 borderWidth: 2,
-                pointRadius: 0,
+                pointRadius: 2,
                 pointHoverRadius: 5,
                 fill: false,
                 tension: 0.3,
-                spanGaps: false
+                spanGaps: true
             };
         });
 
