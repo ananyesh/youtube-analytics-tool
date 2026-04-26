@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.2 Initialized');
+    console.log('YT Analytics v2.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -408,50 +408,64 @@ document.addEventListener('DOMContentLoaded', () => {
         const groups = {};
         stats.forEach(item => {
             const date = new Date(item.recorded_at);
-            let key;
+            let key, snapped;
+            
             if (granularity === 'hourly') {
-                key = date.toISOString().substring(0, 13); // YYYY-MM-DDTHH
+                key = date.toISOString().substring(0, 13);
+                snapped = key + ":00:00.000Z";
             } else if (granularity === 'daily') {
                 key = date.toISOString().split('T')[0];
+                snapped = key + "T00:00:00.000Z";
             } else if (granularity === 'weekly') {
                 const d = new Date(date);
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-                key = new Date(d.setDate(diff)).toISOString().split('T')[0];
+                const day = d.getUTCDay();
+                const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1); // Monday
+                const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
+                key = monday.toISOString().split('T')[0];
+                snapped = key + "T00:00:00.000Z";
             } else if (granularity === 'monthly') {
-                key = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+                key = `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, '0')}`;
+                snapped = key + "-01T00:00:00.000Z";
             } else if (granularity === 'yearly') {
-                key = `${date.getFullYear()}`;
+                key = `${date.getUTCFullYear()}`;
+                snapped = key + "-01-01T00:00:00.000Z";
             }
-            groups[key] = item; // Latest point in period wins
+            
+            // Latest point in period wins, but we store a CLONE with a snapped timestamp
+            groups[key] = { ...item, recorded_at: snapped };
         });
 
         // Gap filling
-        if (granularity === 'daily' || granularity === 'hourly') {
-            const sortedKeys = Object.keys(groups).sort();
-            if (sortedKeys.length > 1) {
-                const start = new Date(sortedKeys[0]);
-                const end = new Date(sortedKeys[sortedKeys.length - 1]);
-                let curr = new Date(start);
-                
-                while (curr <= end) {
-                    let k;
-                    if (granularity === 'daily') {
-                        k = curr.toISOString().split('T')[0];
-                        if (!groups[k]) {
-                            groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
-                        }
-                        curr.setDate(curr.getDate() + 1);
-                    } else {
-                        k = curr.toISOString().substring(0, 13);
-                        if (!groups[k]) {
-                            const snappedTime = k + ":00:00.000Z";
-                            groups[k] = { recorded_at: snappedTime, subscribers: null, views: null, videos: null };
-                        } else {
-                            groups[k].recorded_at = k + ":00:00.000Z";
-                        }
-                        curr.setHours(curr.getHours() + 1);
-                    }
+        const sortedKeys = Object.keys(groups).sort();
+        if (sortedKeys.length > 1 && (granularity === 'daily' || granularity === 'hourly' || granularity === 'weekly' || granularity === 'monthly')) {
+            const start = new Date(groups[sortedKeys[0]].recorded_at);
+            const end = new Date(groups[sortedKeys[sortedKeys.length - 1]].recorded_at);
+            let curr = new Date(start);
+            
+            while (curr <= end) {
+                let k, s;
+                if (granularity === 'hourly') {
+                    k = curr.toISOString().substring(0, 13);
+                    s = k + ":00:00.000Z";
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    curr.setUTCHours(curr.getUTCHours() + 1);
+                } else if (granularity === 'daily') {
+                    k = curr.toISOString().split('T')[0];
+                    s = k + "T00:00:00.000Z";
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    curr.setUTCDate(curr.getUTCDate() + 1);
+                } else if (granularity === 'weekly') {
+                    k = curr.toISOString().split('T')[0];
+                    s = k + "T00:00:00.000Z";
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    curr.setUTCDate(curr.getUTCDate() + 7);
+                } else if (granularity === 'monthly') {
+                    k = curr.toISOString().substring(0, 7);
+                    s = k + "-01T00:00:00.000Z";
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    curr.setUTCMonth(curr.getUTCMonth() + 1);
+                } else {
+                    break;
                 }
             }
         }
