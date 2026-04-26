@@ -557,15 +557,13 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin"></i> Fetching Live Stats for Top Global Channels...</td></tr>';
         
         try {
-            // CAP DATE AT 2025-12-31: VidIQ API currently rejects 2026+ dates with a 400 error.
-            const today = new Date();
-            let toYear = today.getFullYear();
-            if (toYear >= 2026) toYear = 2025;
-            const toDate = `${toYear}-12-31`;
+            // STABLE LEADERBOARD WINDOW: VidIQ limits bulk requests and rejects 2026 dates.
+            // Using a 1-day window in Dec 2025 for maximum reliability.
+            const fromDate = "2025-12-30";
+            const toDate = "2025-12-31";
             
             const ids = topChannelsDB.map(c => c.id).join(',');
-            
-            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=2024-01-01&to=${toDate}`);
+            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=${fromDate}&to=${toDate}`);
             const statsData = await statsRes.json();
             
             if (!Array.isArray(statsData)) throw new Error('Invalid API response');
