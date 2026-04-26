@@ -56,6 +56,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // Leaderboard State
     let leaderboardData = [];
     let leaderboardSort = 'subscribers';
+    let leaderboardCat = 'All';
+
+    // Curated Top Channels Database
+    const topChannelsDB = [
+        { id: "UCX6OQ3DkcsbYNE6H8uQQuVA", cat: "Entertainment" }, // MrBeast
+        { id: "UCq-Fj5jknLsUf-MWSy4_brA", cat: "Music" }, // T-Series
+        { id: "UCbCmjCuTUZos6Inko4u57UQ", cat: "Kids" }, // Cocomelon
+        { id: "UCpEhnqL0y41EpW2TvWAHD7Q", cat: "Entertainment" }, // SET India
+        { id: "UCk8GzjMOrta8yxDcKfylJYw", cat: "Kids" }, // Kids Diana Show
+        { id: "UC-lHJZR3Gqxm24_Vd_AJ5Yw", cat: "Gaming" }, // PewDiePie
+        { id: "UCJplp5SjeGSdVdwsfb9Q7lQ", cat: "Kids" }, // Like Nastya
+        { id: "UCvlE5gTbOvjiolFlEm-c_Ow", cat: "Kids" }, // Vlad and Niki
+        { id: "UCFFbwnve3yF62-tVXkTyHqg", cat: "Music" }, // Zee Music Company
+        { id: "UCJ5v_MCY6GNUBTO8-D3XoAg", cat: "Entertainment" }, // WWE
+        { id: "UCOmHUn--16B90oW2L6FRR3A", cat: "Music" }, // BLACKPINK
+        { id: "UCyoXW-Dse7fURq30EWl_CUA", cat: "Entertainment" }, // Goldmines
+        { id: "UC6-F5tO8uklgE9Zy8IvbdFw", cat: "Entertainment" }, // Sony SAB
+        { id: "UC295-Dw_tDNtZXFeAPAW6Aw", cat: "Entertainment" }, // 5-Minute Crafts
+        { id: "UCLkAepWjdylmXSltofFvsYQ", cat: "Music" }, // BANGTANTV
+        { id: "UCO1cgjhGqxNDdpbk58wK51A", cat: "Music" }, // Justin Bieber
+        { id: "UC3IZKseVpdzPSBaWxBxundA", cat: "Music" }, // HYBE LABELS
+        { id: "UCppHT7SZKKxoIu-BGp02xkw", cat: "Entertainment" }, // Zee TV
+        { id: "UCffDXn7ycAzwL2LDlbyWOTw", cat: "Music" }, // Canal KondZilla
+        { id: "UCcdwLPi3A4qlO_aE25q8OJA", cat: "Kids" }, // Pinkfong Baby Shark
+        { id: "UC0C-w0YjGpqDXGB8IHb662A", cat: "Music" }, // Ed Sheeran
+        { id: "UCfM3iI2L4ZXYXQ5z2c1lWbg", cat: "Music" }, // EminemMusic
+        { id: "UCY30JRSgfhYXA6i6xX1erWg", cat: "Entertainment" }, // Badabun
+        { id: "UCt4t-jeY85JegMlZ-E5UWtA", cat: "Entertainment" }, // A4
+        { id: "UCtO1TIt92uH-iM0oIfB98sA", cat: "News" }, // Aaj Tak
+        { id: "UCXGgrKt94gR6lmN4aN3mYTg", cat: "Gaming" }, // JuegaGerman
+        { id: "UCqECaJ8Gagnn7YCbPEzWH6g", cat: "Music" }, // Taylor Swift
+        { id: "UCiIgmzCRCsAksBw8O8sU4zw", cat: "Gaming" }, // elrubiusOMG
+        { id: "UC2tsAmwAY5gQ9F_z_iR-1yA", cat: "Gaming" }, // Fernanfloo
+        { id: "UCY1kMZp36IQSyNx_9h4mpCg", cat: "Gaming" } // Markiplier
+    ];
 
     // --- Search Suggestions ---
     channelInput.addEventListener('input', () => {
@@ -610,31 +645,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Leaderboard Logic ---
     const fetchLeaderboard = async () => {
         const tbody = document.getElementById('leaderboardBody');
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Loading leaderboard data...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin"></i> Fetching Live Stats for Top Global Channels...</td></tr>';
+        
         try {
-            // Simulated Top Channels via multiple broad searches
-            const queries = ['youtube', 'music', 'gaming', 'news', 'entertainment'];
-            let allResults = [];
+            const today = new Date().toISOString().split('T')[0];
+            const ids = topChannelsDB.map(c => c.id).join(',');
             
-            for(let q of queries) {
-                const res = await fetch(`https://api.vidiq.com/youtube/channels/public/search?query=${q}`);
-                const data = await res.json();
-                if(data && data.results) {
-                    allResults = allResults.concat(data.results);
-                }
-            }
+            // We only need a short window to get the most recent stat
+            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=2024-01-01&to=${today}`);
+            const statsData = await statsRes.json();
             
-            // Remove duplicates
-            const uniqueChannels = [];
-            const seenIds = new Set();
-            allResults.forEach(c => {
-                if(!seenIds.has(c.id)) {
-                    seenIds.add(c.id);
-                    uniqueChannels.push(c);
-                }
+            leaderboardData = statsData.map(data => {
+                const latestStat = data.stats[data.stats.length - 1] || { subscribers: 0, views: 0 };
+                const dbInfo = topChannelsDB.find(db => db.id === data.id);
+                return {
+                    ...data,
+                    subscribers: latestStat.subscribers,
+                    views: latestStat.views,
+                    category: dbInfo ? dbInfo.cat : "Unknown"
+                };
             });
             
-            leaderboardData = uniqueChannels;
             renderLeaderboard();
         } catch(e) {
             console.error(e);
@@ -646,10 +677,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('leaderboardBody');
         tbody.innerHTML = '';
         
-        // Sort data
-        leaderboardData.sort((a, b) => b[leaderboardSort] - a[leaderboardSort]);
+        let filteredData = leaderboardData;
+        if (leaderboardCat !== 'All') {
+            filteredData = filteredData.filter(c => c.category === leaderboardCat);
+        }
         
-        leaderboardData.forEach((channel, index) => {
+        // Sort data explicitly
+        filteredData.sort((a, b) => {
+            const valA = a[leaderboardSort] || 0;
+            const valB = b[leaderboardSort] || 0;
+            return valB - valA;
+        });
+        
+        if (filteredData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">No channels found for this category.</td></tr>';
+            return;
+        }
+
+        filteredData.forEach((channel, index) => {
             const tr = document.createElement('tr');
             const thumbUrl = channel.thumbnails || channel.thumbnail || channel.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
             tr.innerHTML = `
@@ -657,11 +702,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>
                     <div class="channel-cell">
                         <img src="${thumbUrl}" alt="">
-                        <span>${channel.title}</span>
+                        <div>
+                            <div>${channel.title}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary);">${channel.category}</div>
+                        </div>
                     </div>
                 </td>
                 <td>${formatNumber(channel.subscribers)}</td>
-                <td>${formatNumber(channel.views || channel.total_views || 0)}</td>
+                <td>${formatNumber(channel.views)}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -723,6 +771,15 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             leaderboardSort = btn.dataset.sort;
+            renderLeaderboard();
+        });
+    });
+    
+    document.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            leaderboardCat = btn.dataset.cat;
             renderLeaderboard();
         });
     });
