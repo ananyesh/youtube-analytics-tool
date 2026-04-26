@@ -357,9 +357,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`);
                 const data = await res.json();
                 if (data && data.stats) {
-                    subOdometer.update(Math.floor(data.stats.estCount));
+                    const estCount = Math.floor(data.stats.estCount);
+                    subOdometer.update(estCount);
                     viewOdometer.update(data.stats.viewCount);
                     videoOdometer.update(data.stats.videoCount);
+
+                    // RECORD LIVE POINT: Append to historical data for the session
+                    if (currentChannelData && currentChannelData.id === channelId) {
+                        const now = new Date().toISOString();
+                        currentChannelData.stats.push({
+                            recorded_at: now,
+                            subscribers: estCount,
+                            views: data.stats.viewCount,
+                            videos: data.stats.videoCount
+                        });
+                        // Limit to 500 session points to prevent memory bloat
+                        if (currentChannelData.stats.length > 500 + 30) {
+                            currentChannelData.stats.splice(30, 1);
+                        }
+                        // Auto-refresh chart if on hourly view
+                        if (granularitySelect.value === 'hourly') {
+                            updateChart();
+                        }
+                    }
                 }
             } catch (e) { console.warn('Live stats fetch failed', e); }
         }, 2000);
