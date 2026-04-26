@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Channel Analytics | Premium Stats</title>
+    <meta name="description" content="Get real-time and historical YouTube channel statistics including subscribers, views, and growth data.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <main class="container">
+        <nav class="top-nav">
+            <div class="nav-links">
+                <button class="nav-btn active" data-section="main">Home</button>
+                <button class="nav-btn" data-section="updates">Updates</button>
+                <button class="nav-btn" data-section="faq">FAQ</button>
+            </div>
+        </nav>
+
+        <header>
+            <div class="logo">
+                <div id="logoContainer" class="logo-icon-container">
+                    <i class="fab fa-youtube"></i>
+                </div>
+                <h1>YT<span>Analytics</span></h1>
+            </div>
+            <p class="subtitle">Deep dive into channel performance and growth</p>
+        </header>
+
+        <!-- Main Dashboard Section -->
+        <div id="mainSection" class="content-section">
+            <section class="search-section">
+                <div class="search-container">
+                    <div class="search-box">
+                        <input type="text" id="channelInput" placeholder="Paste YouTube Channel URL or ID (e.g. @MrBeast)..." autocomplete="off">
+                        <button id="searchBtn">
+                            <i class="fas fa-search"></i>
+                            <span>Analyze</span>
+                        </button>
+                    </div>
+                    <div id="suggestions" class="suggestions-dropdown hidden"></div>
+                </div>
+                <p class="helper-text">Supports: Channel URLs, Handles (@name), and Channel IDs</p>
+            </section>
+
+            <div id="loading" class="loading-state hidden">
+                <div class="spinner"></div>
+                <p>Fetching channel data...</p>
+            </div>
+
+            <div id="errorState" class="error-state hidden">
+                <i class="fas fa-exclamation-circle"></i>
+                <p id="errorMsg">Channel not found. Please check the URL and try again.</p>
+            </div>
+
+            <div id="dashboard" class="dashboard hidden">
+                <section class="profile-header">
+                    <div class="profile-main">
+                        <img id="channelThumbnail" src="" alt="Thumbnail" class="thumbnail">
+                        <div class="channel-info">
+                            <h2 id="channelTitle">Channel Name</h2>
+                            <div class="meta-tags">
+                                <span id="countryTag" class="tag"><i class="fas fa-globe"></i> US</span>
+                                <span id="publishedTag" class="tag"><i class="fas fa-calendar"></i> Since 2010</span>
+                            </div>
+                            <div id="topicTags" class="topic-container"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon subscribers">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>Subscribers</h3>
+                            <p id="subCount">0</p>
+                            <span class="stat-label">Total Lifetime</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon views">
+                            <i class="fas fa-eye"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>Total Views</h3>
+                            <p id="viewCount">0</p>
+                            <span class="stat-label">Lifetime Impressions</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon videos">
+                            <i class="fas fa-video"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>Videos</h3>
+                            <p id="videoCount">0</p>
+                            <span class="stat-label">Content Pieces</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="charts-section">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title-group">
+                                <h3>Channel Growth</h3>
+                                <div class="granularity-selector">
+                                    <select id="granularitySelect">
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="yearly">Yearly</option>
+                                    </select>
+                                </div>
+                                <i class="fas fa-info-circle info-icon" title="Hourly data is not available through public historical archives. Daily snapshots are the highest frequency provided."></i>
+                            </div>
+                            <div class="chart-controls">
+                                <div class="chart-tabs">
+                                    <button class="tab-btn active" data-type="subscribers">Subscribers</button>
+                                    <button class="tab-btn" data-type="views">Views</button>
+                                </div>
+                                <button id="downloadBtn" class="action-btn">
+                                    <i class="fas fa-download"></i>
+                                    <span>Export</span>
+                                </button>
+                            </div>
+                        </div>
+                        <canvas id="growthChart"></canvas>
+                    </div>
+                </section>
+
+                <section class="logos-section">
+                    <div class="section-card">
+                        <div class="section-header">
+                            <h3><i class="fas fa-history"></i> Historical Branding</h3>
+                            <button id="fetchLogosBtn" class="action-btn purple">
+                                <i class="fas fa-sync"></i>
+                                <span>Fetch from Wayback</span>
+                            </button>
+                        </div>
+                        <p class="note">Note: Fetching historical logos from the Wayback Machine may take a few moments.</p>
+                        <div id="logoGallery" class="logo-gallery">
+                            <div class="gallery-empty">
+                                <i class="fas fa-image"></i>
+                                <p>Click the button to scan archives for previous logos</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Updates Section -->
+        <div id="updatesSection" class="content-section hidden">
+            <section class="info-section">
+                <div class="section-card">
+                    <h2><i class="fas fa-rocket"></i> Project Updates</h2>
+                    <div class="changelog">
+                        <div class="update-item">
+                            <div class="update-date">Latest - v1.3</div>
+                            <ul class="update-list">
+                                <li><strong>Added:</strong> Real-time search suggestions as you type.</li>
+                                <li><strong>Added:</strong> Dynamic header logo that changes to the searched channel.</li>
+                                <li><strong>Fixed:</strong> Wayback Machine image loading issues (using direct image proxy).</li>
+                                <li><strong>Added:</strong> Navigation tabs for Updates and FAQ.</li>
+                            </ul>
+                        </div>
+                        <div class="update-item">
+                            <div class="update-date">v1.2</div>
+                            <ul class="update-list">
+                                <li><strong>Added:</strong> Wayback Machine integration for historical branding history.</li>
+                                <li><strong>Added:</strong> Data granularity (Weekly, Monthly, Yearly).</li>
+                                <li><strong>Fixed:</strong> Chart direction reversed (Oldest first).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- FAQ Section -->
+        <div id="faqSection" class="content-section hidden">
+            <section class="info-section">
+                <div class="section-card">
+                    <h2><i class="fas fa-question-circle"></i> Frequently Asked Questions</h2>
+                    <div class="faq-list">
+                        <div class="faq-item">
+                            <h4>Why is there no hourly data?</h4>
+                            <p>Public statistics are typically archived on a daily basis by major tracking services. Historical hourly data is not publicly archived for the majority of channels.</p>
+                        </div>
+                        <div class="faq-item">
+                            <h4>How far back can the Wayback Machine go?</h4>
+                            <p>It depends on when the channel was first archived. For popular channels, archives can go back as far as 2005.</p>
+                        </div>
+                        <div class="faq-item">
+                            <h4>Why do some logos fail to load?</h4>
+                            <p>Some older images may have been lost in the archive or are protected by CORS policies that even our proxies cannot bypass.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
