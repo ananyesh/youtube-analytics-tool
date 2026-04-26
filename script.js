@@ -153,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Core Search Logic ---
     const handleSearch = async () => {
+        const query = channelInput.value.trim();
         if (!query) return;
         
         clearInterval(liveStatsInterval);
