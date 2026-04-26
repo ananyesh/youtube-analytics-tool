@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.8 Initialized');
+    console.log('YT Analytics v2.9 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -487,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
         gradient.addColorStop(0, currentChartType === 'subscribers' ? 'rgba(255, 77, 77, 0.4)' : 'rgba(33, 150, 243, 0.4)');
         gradient.addColorStop(1, 'rgba(255, 77, 77, 0)');
 
-        const isLargeSet = processedStats.length > 2000;
+        const isLargeSet = processedStats.length > 1000;
         
         growthChart = new Chart(ctx, {
             type: 'line',
@@ -580,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const datasets = compareData.map((channel, i) => {
             const processed = processChartStats(channel.stats, granularity);
-            const isLarge = processed.length > 2000;
+            const isLarge = processed.length > 1000;
             return {
                 label: channel.title,
                 data: processed.map(s => ({ x: new Date(s.recorded_at), y: s[compChartType] })),
@@ -598,7 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'line',
             data: { datasets },
             options: {
-                animation: datasets.some(d => d.data.length > 2000) ? false : { duration: 1000 },
+                animation: datasets.some(d => d.data.length > 1000) ? false : { duration: 1000 },
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
