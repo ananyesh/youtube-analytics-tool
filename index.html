@@ -22,7 +22,9 @@
     <main class="container">
         <nav class="top-nav">
             <div class="nav-links">
-                <button class="nav-btn active" data-section="main">Home</button>
+                <button class="nav-btn active" data-section="dashboard">Home</button>
+                <button class="nav-btn" data-section="compare">Compare</button>
+                <button class="nav-btn" data-section="leaderboard">Leaderboard</button>
                 <button class="nav-btn" data-section="updates">Updates</button>
                 <button class="nav-btn" data-section="faq">FAQ</button>
             </div>
@@ -33,13 +35,86 @@
                 <div id="logoContainer" class="logo-icon-container">
                     <i class="fab fa-youtube"></i>
                 </div>
-                <h1>YT<span>Analytics</span> <span class="version-tag">v1.4.1</span></h1>
+                <h1>YT<span>Analytics</span> <span class="version-tag">v1.5</span></h1>
             </div>
             <p class="subtitle">Deep dive into channel performance and growth</p>
         </header>
 
-        <!-- Main Dashboard Section -->
-        <div id="mainSection" class="content-section">
+        <!-- Compare Section -->
+        <div id="compareSection" class="content-section hidden">
+            <div class="search-section">
+                <div class="search-container">
+                    <div class="search-box">
+                        <input type="text" id="compareInput" placeholder="Add up to 10 channels to compare (e.g. MrBeast)...">
+                        <button id="addCompareBtn"><i class="fas fa-plus"></i> Add</button>
+                    </div>
+                    <div id="compareSuggestions" class="suggestions-dropdown hidden"></div>
+                </div>
+            </div>
+            
+            <div class="compare-chips" id="compareChips">
+                <!-- Channel chips will appear here -->
+            </div>
+
+            <section class="charts-section compare-chart-section">
+                <div class="chart-header">
+                    <div class="chart-title-group">
+                        <h3><i class="fas fa-chart-line"></i> Comparison Graph</h3>
+                    </div>
+                    <div class="chart-controls">
+                        <div class="granularity-selector">
+                            <select id="compareGranularitySelect">
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly" selected>Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+                        <div class="chart-tabs">
+                            <button class="tab-btn active" data-type="subscribers" id="compSubsBtn">Subscribers</button>
+                            <button class="tab-btn" data-type="views" id="compViewsBtn">Views</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="compareChart"></canvas>
+                </div>
+            </section>
+        </div>
+
+        <!-- Leaderboard Section -->
+        <div id="leaderboardSection" class="content-section hidden">
+            <section class="info-section">
+                <div class="section-card">
+                    <h2><i class="fas fa-trophy"></i> Global Leaderboard</h2>
+                    <p class="note">Showing top channels dynamically retrieved. (Note: True top 10k requires premium API access, showing a sample of top results).</p>
+                    
+                    <div class="leaderboard-filters">
+                        <button class="filter-btn active" data-sort="subscribers"><i class="fas fa-users"></i> Most Subs</button>
+                        <button class="filter-btn" data-sort="views"><i class="fas fa-eye"></i> Most Views</button>
+                    </div>
+
+                    <div class="leaderboard-table-container">
+                        <table class="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Channel</th>
+                                    <th>Subscribers</th>
+                                    <th>Total Views</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardBody">
+                                <tr><td colspan="4" class="text-center">Loading leaderboard...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboardSection" class="content-section">
             <section class="search-section">
                 <div class="search-container">
                     <div class="search-box">
@@ -170,7 +245,15 @@
                     <h2><i class="fas fa-rocket"></i> Project Updates</h2>
                     <div class="changelog">
                         <div class="update-item">
-                            <div class="update-date">Latest - v1.4.1</div>
+                            <div class="update-date">Latest - v1.5 (Massive Feature Drop)</div>
+                            <ul class="update-list">
+                                <li><strong>Added:</strong> New <strong>Compare</strong> tab allowing simultaneous graphing of up to 10 channels.</li>
+                                <li><strong>Added:</strong> New <strong>Leaderboard</strong> tab with dynamic sorting for Most Subscribers and Most Views.</li>
+                                <li><strong>Fixed:</strong> Historical logos from Wayback Machine showing up as black circles due to 1x1 tracking pixels.</li>
+                            </ul>
+                        </div>
+                        <div class="update-item">
+                            <div class="update-date">v1.4.1</div>
                             <ul class="update-list">
                                 <li><strong>Added:</strong> Version number display next to the logo to easily verify live updates.</li>
                                 <li><strong>Fixed:</strong> Infinite expanding glitch on the chart caused by unrestricted canvas height.</li>

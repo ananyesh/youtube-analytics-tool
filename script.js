@@ -47,6 +47,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChartType = 'subscribers';
     let suggestionTimeout = null;
 
+    // Compare State
+    let compareData = [];
+    let compChart = null;
+    let compChartType = 'subscribers';
+    let compSuggestionTimeout = null;
+
+    // Leaderboard State
+    let leaderboardData = [];
+    let leaderboardSort = 'subscribers';
+
     // --- Search Suggestions ---
     channelInput.addEventListener('input', () => {
         const query = channelInput.value.trim();
@@ -164,6 +174,108 @@ document.addEventListener('DOMContentLoaded', () => {
             errorMsg.textContent = err.message;
             showState('error');
         }
+    };
+
+    // --- Compare Search Logic ---
+    const compareInput = document.getElementById('compareInput');
+    const compareSuggestions = document.getElementById('compareSuggestions');
+    const compareChips = document.getElementById('compareChips');
+
+    compareInput.addEventListener('input', () => {
+        const query = compareInput.value.trim();
+        clearTimeout(compSuggestionTimeout);
+        
+        if (query.length < 2) {
+            compareSuggestions.classList.add('hidden');
+            return;
+        }
+
+        compSuggestionTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                
+                if (data && data.results && data.results.length > 0) {
+                    renderCompSuggestions(data.results.slice(0, 5));
+                } else {
+                    compareSuggestions.classList.add('hidden');
+                }
+            } catch (e) { console.error('Suggestion fetch failed', e); }
+        }, 300);
+    });
+
+    const renderCompSuggestions = (results) => {
+        compareSuggestions.innerHTML = '';
+        results.forEach(res => {
+            const item = document.createElement('div');
+            item.className = 'suggestion-item';
+            const thumbUrl = res.thumbnails || res.thumbnail || res.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+            item.innerHTML = `
+                <img src="${thumbUrl}" alt="">
+                <div>
+                    <div class="name">${res.title}</div>
+                    <div class="handle">ID: ${res.id}</div>
+                </div>
+            `;
+            item.addEventListener('click', () => {
+                compareInput.value = '';
+                compareSuggestions.classList.add('hidden');
+                addChannelToCompare(res.id);
+            });
+            compareSuggestions.appendChild(item);
+        });
+        compareSuggestions.classList.remove('hidden');
+    };
+
+    const addChannelToCompare = async (channelId) => {
+        if (compareData.length >= 10) return alert('Maximum 10 channels allowed for comparison.');
+        if (compareData.find(c => c.id === channelId)) return alert('Channel already added.');
+        
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
+            const statsData = await statsRes.json();
+            
+            if (!statsData || statsData.length === 0) throw new Error('Stats not found');
+            
+            let rawStats = statsData[0].stats.reverse();
+            let maxSubs = 0, maxViews = 0;
+            statsData[0].stats = rawStats.filter(s => {
+                if (s.subscribers === 0 && s.views === 0) return false;
+                if (s.subscribers < maxSubs) s.subscribers = maxSubs; else maxSubs = s.subscribers;
+                if (s.views < maxViews) s.views = maxViews; else maxViews = s.views;
+                return true;
+            });
+            
+            compareData.push(statsData[0]);
+            renderCompareChips();
+            updateCompareChart();
+        } catch(e) {
+            console.error(e);
+            alert('Failed to add channel.');
+        }
+    };
+
+    const removeCompareChannel = (id) => {
+        compareData = compareData.filter(c => c.id !== id);
+        renderCompareChips();
+        updateCompareChart();
+    };
+
+    const renderCompareChips = () => {
+        compareChips.innerHTML = '';
+        compareData.forEach(c => {
+            const thumbUrl = c.thumbnails || c.thumbnail || c.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+            const chip = document.createElement('div');
+            chip.className = 'chip';
+            chip.innerHTML = `
+                <img src="${thumbUrl}" alt="">
+                <span>${c.title}</span>
+                <button class="chip-remove"><i class="fas fa-times"></i></button>
+            `;
+            chip.querySelector('.chip-remove').addEventListener('click', () => removeCompareChannel(c.id));
+            compareChips.appendChild(chip);
+        });
     };
 
     const renderDashboard = () => {
@@ -304,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const item = document.createElement('div');
         item.className = 'logo-item';
         item.innerHTML = `
-            <img src="${url}" alt="Historical Logo" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
+            <img src="${url}" alt="Historical Logo" onload="if(this.naturalWidth<=5)this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
             <div class="logo-name" title="${name}">${name}</div>
             <div class="date"><i class="far fa-clock"></i> ${dateStr}</div>
         `;
@@ -424,6 +536,137 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     };
 
+    // --- Compare Chart Logic ---
+    const updateCompareChart = () => {
+        const ctx = document.getElementById('compareChart').getContext('2d');
+        if (compChart) compChart.destroy();
+        
+        if (compareData.length === 0) return;
+
+        const granularity = document.getElementById('compareGranularitySelect').value;
+        const colors = ['#ff4d4d', '#2196f3', '#9d50bb', '#00e676', '#ffb300', '#00bfa5', '#e91e63', '#3f51b5', '#cddc39', '#ff5722'];
+        
+        const datasets = compareData.map((channel, i) => {
+            const stats = channel.stats;
+            const groups = {};
+            stats.forEach(item => {
+                const date = new Date(item.recorded_at);
+                let key;
+                if (granularity === 'daily') key = date.toISOString().split('T')[0];
+                else if (granularity === 'weekly') {
+                    const d = new Date(date);
+                    const day = d.getDay();
+                    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                    key = new Date(d.setDate(diff)).toISOString().split('T')[0];
+                } else if (granularity === 'monthly') {
+                    key = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+                } else if (granularity === 'yearly') {
+                    key = `${date.getFullYear()}`;
+                }
+                groups[key] = item;
+            });
+            
+            const processed = Object.keys(groups).sort().map(k => groups[k]);
+            
+            return {
+                label: channel.title,
+                data: processed.map(s => ({ x: new Date(s.recorded_at).toLocaleDateString(), y: s[compChartType] })),
+                borderColor: colors[i % colors.length],
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                fill: false,
+                tension: 0.3,
+                spanGaps: true
+            };
+        });
+
+        compChart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#fff' } },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                scales: {
+                    x: {
+                        type: 'category',
+                        labels: [...new Set(datasets.flatMap(d => d.data.map(p => p.x)))].sort((a,b)=>new Date(a)-new Date(b)),
+                        grid: { display: false },
+                        ticks: { color: '#666', maxTicksLimit: 12 }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#666', callback: (value) => formatNumber(value) }
+                    }
+                }
+            }
+        });
+    };
+
+    // --- Leaderboard Logic ---
+    const fetchLeaderboard = async () => {
+        const tbody = document.getElementById('leaderboardBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Loading leaderboard data...</td></tr>';
+        try {
+            // Simulated Top Channels via multiple broad searches
+            const queries = ['youtube', 'music', 'gaming', 'news', 'entertainment'];
+            let allResults = [];
+            
+            for(let q of queries) {
+                const res = await fetch(`https://api.vidiq.com/youtube/channels/public/search?query=${q}`);
+                const data = await res.json();
+                if(data && data.results) {
+                    allResults = allResults.concat(data.results);
+                }
+            }
+            
+            // Remove duplicates
+            const uniqueChannels = [];
+            const seenIds = new Set();
+            allResults.forEach(c => {
+                if(!seenIds.has(c.id)) {
+                    seenIds.add(c.id);
+                    uniqueChannels.push(c);
+                }
+            });
+            
+            leaderboardData = uniqueChannels;
+            renderLeaderboard();
+        } catch(e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Failed to load leaderboard.</td></tr>';
+        }
+    };
+
+    const renderLeaderboard = () => {
+        const tbody = document.getElementById('leaderboardBody');
+        tbody.innerHTML = '';
+        
+        // Sort data
+        leaderboardData.sort((a, b) => b[leaderboardSort] - a[leaderboardSort]);
+        
+        leaderboardData.forEach((channel, index) => {
+            const tr = document.createElement('tr');
+            const thumbUrl = channel.thumbnails || channel.thumbnail || channel.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+            tr.innerHTML = `
+                <td class="rank">#${index + 1}</td>
+                <td>
+                    <div class="channel-cell">
+                        <img src="${thumbUrl}" alt="">
+                        <span>${channel.title}</span>
+                    </div>
+                </td>
+                <td>${formatNumber(channel.subscribers)}</td>
+                <td>${formatNumber(channel.views || channel.total_views || 0)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    };
+
     const formatNumber = (num) => {
         if (num === null || num === undefined) return '0';
         if (num >= 1000000000) return (num / 1000000000).toFixed(1) + 'B';
@@ -448,12 +691,42 @@ document.addEventListener('DOMContentLoaded', () => {
     granularitySelect.addEventListener('change', updateChart);
     downloadBtn.addEventListener('click', downloadCSV);
     fetchLogosBtn.addEventListener('click', fetchHistoricalLogos);
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    
+    // Dashboard Tabs
+    document.querySelectorAll('#dashboardSection .tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#dashboardSection .tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentChartType = btn.dataset.type;
             updateChart();
         });
     });
+
+    // Compare Controls
+    document.getElementById('compareGranularitySelect').addEventListener('change', updateCompareChart);
+    document.getElementById('compSubsBtn').addEventListener('click', function() {
+        document.getElementById('compViewsBtn').classList.remove('active');
+        this.classList.add('active');
+        compChartType = 'subscribers';
+        updateCompareChart();
+    });
+    document.getElementById('compViewsBtn').addEventListener('click', function() {
+        document.getElementById('compSubsBtn').classList.remove('active');
+        this.classList.add('active');
+        compChartType = 'views';
+        updateCompareChart();
+    });
+
+    // Leaderboard Controls
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            leaderboardSort = btn.dataset.sort;
+            renderLeaderboard();
+        });
+    });
+
+    // Trigger Leaderboard Fetch on load
+    fetchLeaderboard();
 });
