@@ -48,8 +48,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Odometers
     const subOdometer = new Odometer({ el: subCount, value: 0, format: '(,ddd)', theme: 'minimal' });
-    const viewOdometer = new Odometer({ el: viewCount, value: 0, format: '(,ddd)', theme: 'minimal' });
-    const videoOdometer = new Odometer({ el: videoCount, value: 0, format: '(,ddd)', theme: 'minimal' });
+    const viewOdometer = new Odometer({ el: document.getElementById('viewOdometer'), value: 0, theme: 'minimal' });
+    const videoOdometer = new Odometer({ el: document.getElementById('videoOdometer'), value: 0, theme: 'minimal' });
+
+    // Ensure Zoom plugin is active
+    if (typeof ChartZoom !== 'undefined') {
+        Chart.register(ChartZoom);
+    }
 
     // Helper: get thumbnail URL from any API response object
     const getThumb = (obj) => obj.thumbnails || obj.thumbnail || obj.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
@@ -365,19 +370,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     // RECORD LIVE POINT: Append to historical data for the session
                     if (currentChannelData && currentChannelData.id === channelId) {
                         const now = new Date().toISOString();
-                        currentChannelData.stats.push({
+                        const newPoint = {
                             recorded_at: now,
                             subscribers: estCount,
                             views: data.stats.viewCount,
                             videos: data.stats.videoCount
-                        });
+                        };
+                        currentChannelData.stats.push(newPoint);
+                        
                         // Limit to 500 session points to prevent memory bloat
                         if (currentChannelData.stats.length > 500 + 30) {
                             currentChannelData.stats.splice(30, 1);
                         }
-                        // Auto-refresh chart if on hourly view
-                        if (granularitySelect.value === 'hourly') {
-                            updateChart();
+
+                        // SMOOTH UPDATE: Don't recreate the chart, just push the point
+                        if (growthChart && granularitySelect.value === 'hourly') {
+                            growthChart.data.datasets[0].data.push({
+                                x: new Date(now),
+                                y: newPoint[currentChartType]
+                            });
+                            growthChart.update('none'); // Update without animation or reset
                         }
                     }
                 }
