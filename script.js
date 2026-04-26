@@ -391,14 +391,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const processChartStats = (stats, granularity) => {
         if (!stats || stats.length === 0) return [];
         
-        // Group by period
+        // If hourly, return raw stats (sorted) to show every single available data point
+        if (granularity === 'hourly') {
+            return [...stats].sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+        }
+
+        // For other granularities, group by period
         const groups = {};
         stats.forEach(item => {
             const date = new Date(item.recorded_at);
             let key;
-            if (granularity === 'hourly') {
-                key = date.toISOString().substring(0, 13); // YYYY-MM-DDTHH
-            } else if (granularity === 'daily') {
+            if (granularity === 'daily') {
                 key = date.toISOString().split('T')[0];
             } else if (granularity === 'weekly') {
                 const d = new Date(date);
@@ -413,8 +416,8 @@ document.addEventListener('DOMContentLoaded', () => {
             groups[key] = item; // Latest point in period wins
         });
 
-        // Gap filling
-        if (granularity === 'daily' || granularity === 'hourly') {
+        // Gap filling for Daily
+        if (granularity === 'daily') {
             const sortedKeys = Object.keys(groups).sort();
             if (sortedKeys.length > 1) {
                 const start = new Date(sortedKeys[0]);
@@ -422,20 +425,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 let curr = new Date(start);
                 
                 while (curr <= end) {
-                    let k;
-                    if (granularity === 'daily') {
-                        k = curr.toISOString().split('T')[0];
-                        if (!groups[k]) {
-                            groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
-                        }
-                        curr.setDate(curr.getDate() + 1);
-                    } else {
-                        k = curr.toISOString().substring(0, 13);
-                        if (!groups[k]) {
-                            groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
-                        }
-                        curr.setHours(curr.getHours() + 1);
+                    const k = curr.toISOString().split('T')[0];
+                    if (!groups[k]) {
+                        groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
                     }
+                    curr.setDate(curr.getDate() + 1);
                 }
             }
         }
@@ -453,15 +447,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const processedStats = getProcessedStats();
         const ctx = document.getElementById('growthChart').getContext('2d');
-        const granularity = granularitySelect.value;
-        const labels = processedStats.map(s => {
-            const d = new Date(s.recorded_at);
-            return granularity === 'hourly' 
-                ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
-                : d.toLocaleDateString();
-        });
-        const values = processedStats.map(s => s[currentChartType]);
-
         if (growthChart) growthChart.destroy();
 
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
@@ -471,47 +456,55 @@ document.addEventListener('DOMContentLoaded', () => {
         growthChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
                 datasets: [{
                     label: currentChartType === 'subscribers' ? 'Subscribers' : 'Total Views',
-                    data: values,
+                    data: processedStats.map(s => ({ x: new Date(s.recorded_at), y: s[currentChartType] })),
                     borderColor: currentChartType === 'subscribers' ? '#ff4d4d' : '#2196f3',
                     borderWidth: 3,
-                    pointRadius: processedStats.length > 100 ? 0 : 3,
+                    pointRadius: 0,
                     pointHoverRadius: 6,
                     fill: true,
                     backgroundColor: gradient,
                     tension: 0.3,
-                    spanGaps: false // User wants gaps for missing data
+                    spanGaps: false
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false,
-                        backgroundColor: 'rgba(20, 20, 30, 0.9)',
-                        titleColor: '#fff',
-                        bodyColor: '#a0a0b8',
-                        borderColor: 'rgba(255,255,255,0.1)',
-                        borderWidth: 1,
-                        padding: 12
+                    tooltip: { 
+                        backgroundColor: '#1a1a20', 
+                        titleColor: '#fff', 
+                        bodyColor: '#ccc',
+                        callbacks: {
+                            title: (items) => {
+                                return new Date(items[0].parsed.x).toLocaleString([], { 
+                                    month: 'short', day: 'numeric', year: 'numeric', 
+                                    hour: '2-digit', minute: '2-digit' 
+                                });
+                            }
+                        }
+                    },
+                    zoom: {
+                        zoom: {
+                            drag: { enabled: true, backgroundColor: 'rgba(255, 77, 77, 0.1)', borderColor: 'rgba(255, 77, 77, 0.4)', borderWidth: 1 },
+                            mode: 'x'
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        grid: { display: false },
-                        ticks: { color: '#666', maxTicksLimit: 12 }
+                        type: 'time',
+                        time: { unit: granularitySelect.value === 'hourly' ? 'hour' : 'day' },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#888' }
                     },
                     y: {
                         grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { 
-                            color: '#666',
-                            callback: (value) => formatNumber(value)
-                        }
+                        ticks: { color: '#888', callback: value => formatNumber(value) }
                     }
                 }
             }
@@ -542,7 +535,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateCompareChart = () => {
         const ctx = document.getElementById('compareChart').getContext('2d');
         if (compChart) compChart.destroy();
-        
         if (compareData.length === 0) return;
 
         const granularity = document.getElementById('compareGranularitySelect').value;
@@ -550,22 +542,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const datasets = compareData.map((channel, i) => {
             const processed = processChartStats(channel.stats, granularity);
-            const isHourly = granularity === 'hourly';
-            
             return {
                 label: channel.title,
-                data: processed.map(s => {
-                    const d = new Date(s.recorded_at);
-                    const label = isHourly ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
-                    return { x: label, y: s[compChartType] };
-                }),
+                data: processed.map(s => ({ x: new Date(s.recorded_at), y: s[compChartType] })),
                 borderColor: colors[i % colors.length],
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 5,
                 fill: false,
                 tension: 0.3,
-                spanGaps: false // User wants gaps for missing data
+                spanGaps: false
             };
         });
 
@@ -575,25 +561,45 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { labels: { color: '#fff' } },
-                    tooltip: { mode: 'index', intersect: false }
+                    tooltip: { 
+                        backgroundColor: '#1a1a20',
+                        callbacks: {
+                            title: (items) => {
+                                return new Date(items[0].parsed.x).toLocaleString([], { 
+                                    month: 'short', day: 'numeric', year: 'numeric', 
+                                    hour: '2-digit', minute: '2-digit' 
+                                });
+                            }
+                        }
+                    },
+                    zoom: {
+                        zoom: {
+                            drag: { enabled: true, backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1 },
+                            mode: 'x'
+                        }
+                    }
                 },
                 scales: {
                     x: {
-                        type: 'category',
-                        labels: [...new Set(datasets.flatMap(d => d.data.map(p => p.x)))].sort((a,b)=>new Date(a)-new Date(b)),
-                        grid: { display: false },
-                        ticks: { color: '#666', maxTicksLimit: 12 }
+                        type: 'time',
+                        time: { unit: granularity === 'hourly' ? 'hour' : 'day' },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#888' }
                     },
                     y: {
                         grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#666', callback: (value) => formatNumber(value) }
+                        ticks: { color: '#888', callback: value => formatNumber(value) }
                     }
                 }
             }
         });
     };
+
+    document.getElementById('resetGrowthZoom').addEventListener('click', () => { if (growthChart) growthChart.resetZoom(); });
+    document.getElementById('resetCompareZoom').addEventListener('click', () => { if (compChart) compChart.resetZoom(); });
 
     // --- Leaderboard Logic ---
     const fetchLeaderboard = async () => {
