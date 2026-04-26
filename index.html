@@ -54,7 +54,7 @@
                 <div id="logoContainer" class="logo-icon-container">
                     <i class="fab fa-youtube"></i>
                 </div>
-                <h1>YT<span>Analytics</span> <span class="version-tag">v2.9</span></h1>
+                <h1>YT<span>Analytics</span> <span class="version-tag">v3.0</span></h1>
             </div>
             <p class="subtitle">Deep dive into channel performance and growth</p>
         </header>
@@ -108,40 +108,15 @@
         <!-- Leaderboard Section -->
         <div id="leaderboardSection" class="content-section hidden">
             <section class="info-section">
-                <div class="section-card">
-                    <h2><i class="fas fa-trophy"></i> Global Leaderboard</h2>
-                    <p class="note">Premium Curated Leaderboard - Tracking the top global channels.</p>
-                    
-                    <div class="leaderboard-filters">
-                        <div class="filter-group">
-                            <span class="filter-label">Sort By:</span>
-                            <button class="filter-btn active" data-sort="subscribers"><i class="fas fa-users"></i> Most Subs</button>
-                            <button class="filter-btn" data-sort="views"><i class="fas fa-eye"></i> Most Views</button>
+                <div class="section-card maintenance-card">
+                    <div class="maintenance-content">
+                        <i class="fas fa-tools maintenance-icon"></i>
+                        <h2>Leaderboard Under Maintenance</h2>
+                        <p>We are currently upgrading our global tracking database to provide more accurate real-time rankings. The leaderboard will be back online soon.</p>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill"></div>
                         </div>
-                        <div class="filter-group">
-                            <span class="filter-label">Category:</span>
-                            <button class="cat-btn active" data-cat="All">All</button>
-                            <button class="cat-btn" data-cat="Entertainment">Entertainment</button>
-                            <button class="cat-btn" data-cat="Music">Music</button>
-                            <button class="cat-btn" data-cat="Kids">Kids</button>
-                            <button class="cat-btn" data-cat="Gaming">Gaming</button>
-                        </div>
-                    </div>
-
-                    <div class="leaderboard-table-container">
-                        <table class="leaderboard-table">
-                            <thead>
-                                <tr>
-                                    <th>Rank</th>
-                                    <th>Channel</th>
-                                    <th>Subscribers</th>
-                                    <th>Total Views</th>
-                                </tr>
-                            </thead>
-                            <tbody id="leaderboardBody">
-                                <tr><td colspan="4" class="text-center">Loading leaderboard...</td></tr>
-                            </tbody>
-                        </table>
+                        <p class="maintenance-note">Estimated completion: Within 24 hours</p>
                     </div>
                 </div>
             </section>
@@ -266,7 +241,15 @@
                     <h2><i class="fas fa-rocket"></i> Project Updates</h2>
                     <div class="changelog">
                         <div class="update-item">
-                            <div class="update-date">Latest - v2.9 (Universal Turbo)</div>
+                            <div class="update-date">Latest - v3.0 (Content Update)</div>
+                            <ul class="update-list">
+                                <li><strong>Maintenance:</strong> Leaderboard is temporarily offline for database upgrades.</li>
+                                <li><strong>FAQ:</strong> Significantly expanded the FAQ section with new information.</li>
+                                <li><strong>Stable:</strong> Reached v3.0 - General stability and engine performance finalized.</li>
+                            </ul>
+                        </div>
+                        <div class="update-item">
+                            <div class="update-date">v2.9 (Universal Turbo)</div>
                             <ul class="update-list">
                                 <li><strong>Global:</strong> Turbo Engine now applies to all modes (Daily, Weekly, Hourly, Comparison).</li>
                                 <li><strong>Faster:</strong> Lowered performance threshold to 1,000 points for earlier optimization.</li>
@@ -483,8 +466,20 @@
                     <h2><i class="fas fa-question-circle"></i> Frequently Asked Questions</h2>
                     <div class="faq-list">
                         <div class="faq-item">
-                            <h4>Why is there no hourly data?</h4>
-                            <p>Public statistics are typically archived on a daily basis by major tracking services. Historical hourly data is not publicly archived for the majority of channels.</p>
+                            <h4>How accurate is the data?</h4>
+                            <p>We use high-precision tracking from multiple public APIs. For historical data, we use snapped snapshots, while our "Live" odometer uses advanced estimation algorithms to provide sub-second updates.</p>
+                        </div>
+                        <div class="faq-item">
+                            <h4>Why is there no hourly data for some dates?</h4>
+                            <p>Public statistics are typically archived on a daily basis. Historical hourly data is only available for periods where active tracking was enabled for that specific channel.</p>
+                        </div>
+                        <div class="faq-item">
+                            <h4>How does the Comparison tool work?</h4>
+                            <p>You can add up to 10 channels simultaneously. The graph automatically scales to handle channels of any size, allowing you to compare growth velocity between small and large creators.</p>
+                        </div>
+                        <div class="faq-item">
+                            <h4>How often does the dashboard update?</h4>
+                            <p>The "Live" statistics (Odometer and Header) update every 2 seconds. The growth charts update as new historical snapshots become available from our tracking partners.</p>
                         </div>
 
 
@@ -494,6 +489,6 @@
         </div>
     </main>
 
-    <script src="script.js?v=2.9"></script>
+    <script src="script.js?v=3.0"></script>
 </body>
 </html>
