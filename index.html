@@ -35,7 +35,7 @@
                 <div id="logoContainer" class="logo-icon-container">
                     <i class="fab fa-youtube"></i>
                 </div>
-                <h1>YT<span>Analytics</span> <span class="version-tag">v1.6.1</span></h1>
+                <h1>YT<span>Analytics</span> <span class="version-tag">v1.7</span></h1>
             </div>
             <p class="subtitle">Deep dive into channel performance and growth</p>
         </header>
@@ -228,24 +228,7 @@
                     </div>
                 </section>
 
-                <section class="logos-section">
-                    <div class="section-card">
-                        <div class="section-header">
-                            <h3><i class="fas fa-history"></i> Historical Branding</h3>
-                            <button id="fetchLogosBtn" class="action-btn purple">
-                                <i class="fas fa-sync"></i>
-                                <span>Fetch from Wayback</span>
-                            </button>
-                        </div>
-                        <p class="note">Note: Fetching historical logos from the Wayback Machine may take a few moments.</p>
-                        <div id="logoGallery" class="logo-gallery">
-                            <div class="gallery-empty">
-                                <i class="fas fa-image"></i>
-                                <p>Click the button to scan archives for previous logos</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+
             </div>
         </div>
 
@@ -256,7 +239,15 @@
                     <h2><i class="fas fa-rocket"></i> Project Updates</h2>
                     <div class="changelog">
                         <div class="update-item">
-                            <div class="update-date">Latest - v1.6.1 (Image Fix)</div>
+                            <div class="update-date">Latest - v1.7 (Leaderboard Fix & Cleanup)</div>
+                            <ul class="update-list">
+                                <li><strong>Fixed:</strong> Global Leaderboard now fetches and ranks correctly (resolved API date range issues).</li>
+                                <li><strong>Removed:</strong> Historical Branding (Wayback Machine) feature has been removed as per user request.</li>
+                                <li><strong>Improved:</strong> More robust error handling for missing channel stats.</li>
+                            </ul>
+                        </div>
+                        <div class="update-item">
+                            <div class="update-date">v1.6.1 (Image Fix)</div>
                             <ul class="update-list">
                                 <li><strong>Fixed:</strong> Search suggestions showing blank/broken profile pictures (API returns "thumbnail" not "thumbnail_url").</li>
                                 <li><strong>Fixed:</strong> Wayback Machine historical logos failing to load due to overly-strict regex that missed modern YouTube URLs.</li>
@@ -326,14 +317,8 @@
                             <h4>Why is there no hourly data?</h4>
                             <p>Public statistics are typically archived on a daily basis by major tracking services. Historical hourly data is not publicly archived for the majority of channels.</p>
                         </div>
-                        <div class="faq-item">
-                            <h4>How far back can the Wayback Machine go?</h4>
-                            <p>It depends on when the channel was first archived. For popular channels, archives can go back as far as 2005.</p>
-                        </div>
-                        <div class="faq-item">
-                            <h4>Why do some logos fail to load?</h4>
-                            <p>Some older images may have been lost in the archive or are protected by CORS policies that even our proxies cannot bypass.</p>
-                        </div>
+
+
                     </div>
                 </div>
             </section>

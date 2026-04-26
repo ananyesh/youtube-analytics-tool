@@ -7,8 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const dashboard = document.getElementById('dashboard');
     const granularitySelect = document.getElementById('granularitySelect');
     const downloadBtn = document.getElementById('downloadBtn');
-    const fetchLogosBtn = document.getElementById('fetchLogosBtn');
-    const logoGallery = document.getElementById('logoGallery');
     const suggestions = document.getElementById('suggestions');
     const logoContainer = document.getElementById('logoContainer');
 
@@ -149,16 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Core Search Logic ---
     const handleSearch = async () => {
-        const query = channelInput.value.trim();
         if (!query) return;
-
         suggestions.classList.add('hidden');
         showState('loading');
-        logoGallery.innerHTML = `
-            <div class="gallery-empty">
-                <i class="fas fa-image"></i>
-                <p>Click the button to scan archives for previous logos</p>
-            </div>`;
         
         try {
             const cleanQuery = query
@@ -345,161 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateChart();
     };
 
-    // --- Wayback Machine Logic ---
 
-    const fetchProxy = async (url) => {
-        const proxies = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-            `https://corsproxy.io/?${encodeURIComponent(url)}`,
-            `https://thingproxy.freeboard.io/fetch/${url}`
-        ];
-        for (const proxyUrl of proxies) {
-            try {
-                const res = await fetch(proxyUrl);
-                if (!res.ok) continue;
-                if (proxyUrl.includes('allorigins')) {
-                    const data = await res.json();
-                    return data.contents;
-                } else {
-                    return await res.text();
-                }
-            } catch (e) { console.warn(`Proxy ${proxyUrl} failed`, e); }
-        }
-        if (window.location.protocol === 'https:') {
-            try {
-                const res = await fetch(url);
-                if (res.ok) return await res.text();
-            } catch (e) {}
-        }
-        throw new Error('All CORS proxies failed. Try running from a live server (GitHub Pages).');
-    };
-
-    const fetchHistoricalLogos = async () => {
-        if (!currentChannelData) return;
-        const channelId = currentChannelData.id;
-        const channelUrl = `https://www.youtube.com/channel/${channelId}`;
-        fetchLogosBtn.disabled = true;
-        fetchLogosBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Searching Archives...</span>';
-        logoGallery.innerHTML = '<div class="gallery-empty"><p>Scanning Wayback Machine snapshots...</p></div>';
-        try {
-            const cdxUrl = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(channelUrl)}&output=json&collapse=timestamp:6&filter=statuscode:200`;
-            const cdxText = await fetchProxy(cdxUrl);
-            let snapshots = [];
-            try {
-                snapshots = JSON.parse(cdxText);
-                if (Array.isArray(snapshots) && snapshots.length > 0 && snapshots[0][0] === 'urlkey') {
-                    snapshots.shift(); 
-                }
-            } catch (e) {
-                snapshots = cdxText.trim().split('\n').map(line => line.split(' '));
-            }
-            if (!Array.isArray(snapshots) || snapshots.length === 0) {
-                throw new Error('No historical snapshots found.');
-            }
-            const step = Math.max(1, Math.floor(snapshots.length / 8));
-            const targetSnapshots = [];
-            for (let i = 0; i < snapshots.length; i += step) {
-                if (snapshots[i]) targetSnapshots.push(snapshots[i]);
-                if (targetSnapshots.length >= 8) break;
-            }
-            const estSeconds = targetSnapshots.length * 2;
-            logoGallery.innerHTML = `<div class="gallery-empty"><p>Found ${targetSnapshots.length} snapshots. Est. time: ${estSeconds}s...</p></div>`;
-            const foundLogos = new Set();
-            for (let i = 0; i < targetSnapshots.length; i++) {
-                const snap = targetSnapshots[i];
-                if (!snap || !snap[1]) continue;
-                const timestamp = snap[1];
-                const archiveUrl = `https://web.archive.org/web/${timestamp}/${channelUrl}`;
-                fetchLogosBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>Processing ${i+1}/${targetSnapshots.length}...</span>`;
-                try {
-                    const html = await fetchProxy(archiveUrl);
-                    // Match modern YouTube profile image URLs (contain slashes, dashes, dots, etc.)
-                    const logoRegex = /https:\/\/(yt3\.ggpht\.com\/[a-zA-Z0-9\-_\/\.=?&%]+|lh3\.googleusercontent\.com\/[a-zA-Z0-9\-_\/\.=?&%]+)/g;
-                    const nameRegex = /<title>(.*?) - YouTube<\/title>/;
-                    let matches = html.match(logoRegex);
-                    const nameMatch = html.match(nameRegex);
-                    const historicalName = nameMatch ? nameMatch[1].replace(' - YouTube', '') : currentChannelData.title;
-                    if (matches) {
-                        // Deduplicate and filter out tiny icons
-                        matches = [...new Set(matches)];
-                        const rawLogo = matches.find(m => 
-                            !m.includes('favicon') && 
-                            !m.includes('/icon') && 
-                            m.length > 60
-                        ) || matches[0];
-                        if (rawLogo) {
-                            // Use base URL for deduplication but keep full URL for loading
-                            const dedupeKey = rawLogo.split('=s')[0];
-                            if (!foundLogos.has(dedupeKey)) {
-                                foundLogos.add(dedupeKey);
-                                if (foundLogos.size === 1) logoGallery.innerHTML = '';
-                                // Try multiple URL strategies for the image
-                                const proxiedLogoUrl = `https://web.archive.org/web/${timestamp}im_/${rawLogo}`;
-                                addLogoToGallery(proxiedLogoUrl, rawLogo, timestamp, historicalName);
-                            }
-                        }
-                    }
-                } catch (e) { console.warn('Snapshot fetch failed', e); }
-            }
-            if (foundLogos.size === 0) {
-                logoGallery.innerHTML = '<div class="gallery-empty"><p>No previous logos found in snapshots.</p></div>';
-            }
-        } catch (err) {
-            console.error(err);
-            logoGallery.innerHTML = `<div class="gallery-empty"><p class="error">${err.message}</p></div>`;
-        } finally {
-            fetchLogosBtn.disabled = false;
-            fetchLogosBtn.innerHTML = '<i class="fas fa-sync"></i> <span>Fetch from Wayback</span>';
-        }
-    };
-
-    const addLogoToGallery = (proxyUrl, directUrl, timestamp, name) => {
-        const year = timestamp.substring(0, 4);
-        const month = timestamp.substring(4, 6);
-        const day = timestamp.substring(6, 8);
-        const dateStr = `${year}-${month}-${day}`;
-        const item = document.createElement('div');
-        item.className = 'logo-item';
-        const fallbackYT = 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
-        // Build the img element programmatically so we can set up a fallback chain
-        const img = document.createElement('img');
-        img.alt = 'Historical Logo';
-        img.src = proxyUrl;
-        let triedDirect = false;
-        img.onerror = function() {
-            if (!triedDirect) {
-                triedDirect = true;
-                this.src = directUrl; // Try the direct yt3 URL
-            } else {
-                this.src = fallbackYT;
-            }
-        };
-        img.onload = function() {
-            if (this.naturalWidth <= 5 || this.naturalHeight <= 5) {
-                if (!triedDirect) {
-                    triedDirect = true;
-                    this.src = directUrl;
-                } else {
-                    this.src = fallbackYT;
-                }
-            }
-        };
-        item.appendChild(img);
-        
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'logo-name';
-        nameDiv.title = name;
-        nameDiv.textContent = name;
-        item.appendChild(nameDiv);
-        
-        const dateDiv = document.createElement('div');
-        dateDiv.className = 'date';
-        dateDiv.innerHTML = `<i class="far fa-clock"></i> ${dateStr}`;
-        item.appendChild(dateDiv);
-        
-        logoGallery.appendChild(item);
-    };
 
     // --- Chart Logic ---
 
@@ -691,28 +528,35 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin"></i> Fetching Live Stats for Top Global Channels...</td></tr>';
         
         try {
-            const today = new Date().toISOString().split('T')[0];
+            // CAP DATE AT 2025-12-31: VidIQ API currently rejects 2026+ dates with a 400 error.
+            const today = new Date();
+            let toYear = today.getFullYear();
+            if (toYear >= 2026) toYear = 2025;
+            const toDate = `${toYear}-12-31`;
+            
             const ids = topChannelsDB.map(c => c.id).join(',');
             
-            // We only need a short window to get the most recent stat
-            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=2024-01-01&to=${today}`);
+            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=2024-01-01&to=${toDate}`);
             const statsData = await statsRes.json();
             
+            if (!Array.isArray(statsData)) throw new Error('Invalid API response');
+
             leaderboardData = statsData.map(data => {
-                const latestStat = data.stats[data.stats.length - 1] || { subscribers: 0, views: 0 };
+                const stats = data.stats || [];
+                const latestStat = stats.length > 0 ? stats[stats.length - 1] : { subscribers: 0, views: 0 };
                 const dbInfo = topChannelsDB.find(db => db.id === data.id);
                 return {
                     ...data,
-                    subscribers: latestStat.subscribers,
-                    views: latestStat.views,
+                    subscribers: latestStat.subscribers || 0,
+                    views: latestStat.views || 0,
                     category: dbInfo ? dbInfo.cat : "Unknown"
                 };
             });
             
             renderLeaderboard();
         } catch(e) {
-            console.error(e);
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Failed to load leaderboard.</td></tr>';
+            console.error('Leaderboard load failed:', e);
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Failed to load leaderboard. Please try again later.</td></tr>';
         }
     };
 
@@ -780,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     granularitySelect.addEventListener('change', updateChart);
     downloadBtn.addEventListener('click', downloadCSV);
-    fetchLogosBtn.addEventListener('click', fetchHistoricalLogos);
+
     
     // Dashboard Tabs
     document.querySelectorAll('#dashboardSection .tab-btn').forEach(btn => {
