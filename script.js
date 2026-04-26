@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.3.1 Initialized');
+    console.log('YT Analytics v2.4 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -404,9 +404,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const processChartStats = (stats, granularity) => {
         if (!stats || stats.length === 0) return [];
         
+        // For Hourly, only process the last 30 days to allow for 100% gap-filling precision without lag
+        let dataToProcess = stats;
+        if (granularity === 'hourly') {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            dataToProcess = stats.filter(s => new Date(s.recorded_at) > thirtyDaysAgo);
+            
+            // If the filtered data is empty, just take the last 50 points to show something
+            if (dataToProcess.length === 0) dataToProcess = stats.slice(-50);
+        }
+
         // Group by period
         const groups = {};
-        stats.forEach(item => {
+        dataToProcess.forEach(item => {
             const date = new Date(item.recorded_at);
             let key, snapped;
             
@@ -450,44 +461,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 return Object.keys(groups).sort().map(k => groups[k]);
             }
 
-            while (curr <= end && iterations < 5000) {
+            while (curr <= end && iterations < 10000) {
                 iterations++;
                 let k, s;
                 if (granularity === 'hourly') {
                     k = curr.toISOString().substring(0, 13);
                     s = k + ":00:00.000Z";
-                    if (!groups[k]) {
-                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
-                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                        }
-                    }
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
                     curr.setUTCHours(curr.getUTCHours() + 1);
                 } else if (granularity === 'daily') {
                     k = curr.toISOString().split('T')[0];
                     s = k + "T00:00:00.000Z";
-                    if (!groups[k]) {
-                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
-                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                        }
-                    }
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
                     curr.setUTCDate(curr.getUTCDate() + 1);
                 } else if (granularity === 'weekly') {
                     k = curr.toISOString().split('T')[0];
                     s = k + "T00:00:00.000Z";
-                    if (!groups[k]) {
-                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
-                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                        }
-                    }
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
                     curr.setUTCDate(curr.getUTCDate() + 7);
                 } else if (granularity === 'monthly') {
                     k = curr.toISOString().substring(0, 7);
                     s = k + "-01T00:00:00.000Z";
-                    if (!groups[k]) {
-                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
-                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                        }
-                    }
+                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
                     curr.setUTCMonth(curr.getUTCMonth() + 1);
                 } else {
                     break;
