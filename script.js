@@ -168,8 +168,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderDashboard = () => {
         const data = currentChannelData;
-        logoContainer.innerHTML = `<img src="${data.thumbnail_url}" class="header-thumb" alt="Profile">`;
-        channelThumbnail.src = data.thumbnail_url;
+        
+        // Handle varying thumbnail keys between APIs
+        const thumbUrl = data.thumbnails || data.thumbnail || data.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+        
+        // Update header logo container
+        logoContainer.innerHTML = `<img src="${thumbUrl}" class="header-thumb" alt="Profile">`;
+
+        channelThumbnail.src = thumbUrl;
         channelTitle.textContent = data.title;
         countryTag.innerHTML = `<i class="fas fa-globe"></i> ${data.country || 'Global'}`;
         const date = new Date(data.published_at);
@@ -311,14 +317,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const granularity = granularitySelect.value;
         const stats = currentChannelData.stats;
         
-        if (granularity === 'daily') return stats;
-        
-        // Group by period and take the LATEST entry for each period (since it's cumulative)
+        // Group by period and take the LATEST entry for each period
         const groups = {};
         stats.forEach(item => {
             const date = new Date(item.recorded_at);
             let key;
-            if (granularity === 'weekly') {
+            if (granularity === 'daily') {
+                key = date.toISOString().split('T')[0];
+            } else if (granularity === 'weekly') {
                 const d = new Date(date);
                 const day = d.getDay();
                 const diff = d.getDate() - day + (day === 0 ? -6 : 1);
@@ -328,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (granularity === 'yearly') {
                 key = `${date.getFullYear()}`;
             }
-            groups[key] = item; // Keep overwriting so we get the latest point in the group
+            groups[key] = item; // Overwrites so we get the latest point in the group
         });
         
         return Object.keys(groups).sort().map(key => groups[key]);
