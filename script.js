@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.6 Initialized');
+    console.log('YT Analytics v2.7 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -396,16 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const processChartStats = (stats, granularity) => {
         if (!stats || stats.length === 0) return [];
         
-        // For Hourly, only process the last 30 days to allow for 100% gap-filling precision without lag
-        let dataToProcess = stats;
-        if (granularity === 'hourly') {
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            dataToProcess = stats.filter(s => new Date(s.recorded_at) > thirtyDaysAgo);
-            
-            // If the filtered data is empty, just take the last 50 points to show something
-            if (dataToProcess.length === 0) dataToProcess = stats.slice(-50);
-        }
+        const dataToProcess = stats;
 
         // Group by period
         const groups = {};
@@ -438,47 +429,42 @@ document.addEventListener('DOMContentLoaded', () => {
             groups[key] = { ...item, recorded_at: snapped };
         });
 
-        // Gap filling with safety limits to prevent lag
+        // Smart Gap Filling: Only fill gaps if they are reasonably small to prevent browser lag
         const sortedKeys = Object.keys(groups).sort();
-        if (sortedKeys.length > 1 && (granularity === 'daily' || granularity === 'hourly' || granularity === 'weekly' || granularity === 'monthly')) {
-            const start = new Date(groups[sortedKeys[0]].recorded_at);
-            const end = new Date(groups[sortedKeys[sortedKeys.length - 1]].recorded_at);
-            let curr = new Date(start);
-            let iterations = 0;
-            const MAX_GAP_POINTS = 3000; // Total points to allow before stopping gap fill
+        if (sortedKeys.length > 1 && granularity !== 'yearly') {
+            const MAX_GAP_HOURS = 48; // Max hours to fill in one go for hourly
+            const MAX_GAP_DAYS = 31;  // Max days to fill for daily/weekly
             
-            // For hourly, only gap fill if the range is less than 60 days to prevent browser crash
-            const daysDiff = (end - start) / (1000 * 60 * 60 * 24);
-            if (granularity === 'hourly' && daysDiff > 60) {
-                return Object.keys(groups).sort().map(k => groups[k]);
-            }
-
-            while (curr <= end && iterations < 10000) {
-                iterations++;
-                let k, s;
+            for (let i = 0; i < sortedKeys.length - 1; i++) {
+                const start = new Date(groups[sortedKeys[i]].recorded_at);
+                const next = new Date(groups[sortedKeys[i+1]].recorded_at);
+                let curr = new Date(start);
+                
                 if (granularity === 'hourly') {
-                    k = curr.toISOString().substring(0, 13);
-                    s = k + ":00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
                     curr.setUTCHours(curr.getUTCHours() + 1);
+                    // Only fill if gap is small
+                    const diffHours = (next - start) / (1000 * 60 * 60);
+                    if (diffHours <= MAX_GAP_HOURS) {
+                        while (curr < next) {
+                            const k = curr.toISOString().substring(0, 13);
+                            const s = k + ":00:00.000Z";
+                            if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                            curr.setUTCHours(curr.getUTCHours() + 1);
+                        }
+                    }
                 } else if (granularity === 'daily') {
-                    k = curr.toISOString().split('T')[0];
-                    s = k + "T00:00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
                     curr.setUTCDate(curr.getUTCDate() + 1);
-                } else if (granularity === 'weekly') {
-                    k = curr.toISOString().split('T')[0];
-                    s = k + "T00:00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                    curr.setUTCDate(curr.getUTCDate() + 7);
-                } else if (granularity === 'monthly') {
-                    k = curr.toISOString().substring(0, 7);
-                    s = k + "-01T00:00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                    curr.setUTCMonth(curr.getUTCMonth() + 1);
-                } else {
-                    break;
+                    const diffDays = (next - start) / (1000 * 60 * 60 * 24);
+                    if (diffDays <= MAX_GAP_DAYS) {
+                        while (curr < next) {
+                            const k = curr.toISOString().split('T')[0];
+                            const s = k + "T00:00:00.000Z";
+                            if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                            curr.setUTCDate(curr.getUTCDate() + 1);
+                        }
+                    }
                 }
+                // (Weekly/Monthly gap filling handled by Chart.js time axis scale naturally)
             }
         }
 
