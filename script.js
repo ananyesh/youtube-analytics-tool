@@ -557,18 +557,30 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin"></i> Fetching Live Stats for Top Global Channels...</td></tr>';
         
         try {
-            // STABLE LEADERBOARD WINDOW: VidIQ limits bulk requests and rejects 2026 dates.
-            // Using a 1-day window in Dec 2025 for maximum reliability.
-            const fromDate = "2025-12-30";
+            // Using a broader Dec 2025 window and chunking into batches of 10 for reliability
+            const fromDate = "2025-12-01";
             const toDate = "2025-12-31";
-            
-            const ids = topChannelsDB.map(c => c.id).join(',');
-            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=${fromDate}&to=${toDate}`);
-            const statsData = await statsRes.json();
-            
-            if (!Array.isArray(statsData)) throw new Error('Invalid API response');
+            const chunkSize = 10;
+            let allStats = [];
 
-            leaderboardData = statsData.map(data => {
+            for (let i = 0; i < topChannelsDB.length; i += chunkSize) {
+                const chunk = topChannelsDB.slice(i, i + chunkSize);
+                const ids = chunk.map(c => c.id).join(',');
+                try {
+                    const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${ids}&from=${fromDate}&to=${toDate}`);
+                    if (!statsRes.ok) throw new Error(`HTTP ${statsRes.status}`);
+                    const statsData = await statsRes.json();
+                    if (Array.isArray(statsData)) {
+                        allStats = allStats.concat(statsData);
+                    }
+                } catch (chunkErr) {
+                    console.warn(`Leaderboard chunk ${i} failed:`, chunkErr);
+                }
+            }
+
+            if (allStats.length === 0) throw new Error('No data retrieved from API');
+
+            leaderboardData = allStats.map(data => {
                 const stats = data.stats || [];
                 const latestStat = stats.length > 0 ? stats[stats.length - 1] : { subscribers: 0, views: 0 };
                 const dbInfo = topChannelsDB.find(db => db.id === data.id);
