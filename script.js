@@ -500,7 +500,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         type: 'time',
                         time: { unit: granularitySelect.value === 'hourly' ? 'hour' : 'day' },
                         grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#888' }
+                        ticks: { color: '#888' },
+                        offset: true
                     },
                     y: {
                         grid: { color: 'rgba(255,255,255,0.05)' },
@@ -514,9 +515,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadCSV = () => {
         if (!currentChannelData) return;
         const stats = getProcessedStats();
-        const headers = ['Date', 'Subscribers', 'Views', 'Videos'];
+        const headers = ['Timestamp', 'Subscribers', 'Views', 'Videos'];
         const rows = stats.map(s => [
-            new Date(s.recorded_at).toISOString().split('T')[0],
+            new Date(s.recorded_at).toISOString().replace('T', ' ').substring(0, 19),
             s.subscribers,
             s.views,
             s.videos
@@ -587,7 +588,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         type: 'time',
                         time: { unit: granularity === 'hourly' ? 'hour' : 'day' },
                         grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#888' }
+                        ticks: { color: '#888' },
+                        offset: true
                     },
                     y: {
                         grid: { color: 'rgba(255,255,255,0.05)' },
