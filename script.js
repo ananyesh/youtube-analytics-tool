@@ -393,20 +393,29 @@ document.addEventListener('DOMContentLoaded', () => {
             groups[key] = item; // Latest point in period wins
         });
 
-        // Gap filling for Daily
-        if (granularity === 'daily') {
+        // Gap filling
+        if (granularity === 'daily' || granularity === 'hourly') {
             const sortedKeys = Object.keys(groups).sort();
             if (sortedKeys.length > 1) {
                 const start = new Date(sortedKeys[0]);
                 const end = new Date(sortedKeys[sortedKeys.length - 1]);
                 let curr = new Date(start);
+                
                 while (curr <= end) {
-                    const k = curr.toISOString().split('T')[0];
-                    if (!groups[k]) {
-                        // Create a placeholder with null values for "empty" look
-                        groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
+                    let k;
+                    if (granularity === 'daily') {
+                        k = curr.toISOString().split('T')[0];
+                        if (!groups[k]) {
+                            groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
+                        }
+                        curr.setDate(curr.getDate() + 1);
+                    } else {
+                        k = curr.toISOString().substring(0, 13);
+                        if (!groups[k]) {
+                            groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
+                        }
+                        curr.setHours(curr.getHours() + 1);
                     }
-                    curr.setDate(curr.getDate() + 1);
                 }
             }
         }
@@ -424,7 +433,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const processedStats = getProcessedStats();
         const ctx = document.getElementById('growthChart').getContext('2d');
-        const labels = processedStats.map(s => new Date(s.recorded_at).toLocaleDateString());
+        const granularity = granularitySelect.value;
+        const labels = processedStats.map(s => {
+            const d = new Date(s.recorded_at);
+            return granularity === 'hourly' 
+                ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                : d.toLocaleDateString();
+        });
         const values = processedStats.map(s => s[currentChartType]);
 
         if (growthChart) growthChart.destroy();
@@ -515,10 +530,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const datasets = compareData.map((channel, i) => {
             const processed = processChartStats(channel.stats, granularity);
+            const isHourly = granularity === 'hourly';
             
             return {
                 label: channel.title,
-                data: processed.map(s => ({ x: new Date(s.recorded_at).toLocaleDateString(), y: s[compChartType] })),
+                data: processed.map(s => {
+                    const d = new Date(s.recorded_at);
+                    const label = isHourly ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
+                    return { x: label, y: s[compChartType] };
+                }),
                 borderColor: colors[i % colors.length],
                 borderWidth: 2,
                 pointRadius: 0,
