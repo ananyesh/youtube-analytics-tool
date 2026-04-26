@@ -368,17 +368,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- Chart Logic ---
-
-    const getProcessedStats = () => {
-        const granularity = granularitySelect.value;
-        const stats = currentChannelData.stats;
+    const processChartStats = (stats, granularity) => {
+        if (!stats || stats.length === 0) return [];
         
-        // Group by period and take the LATEST entry for each period
+        // Group by period
         const groups = {};
         stats.forEach(item => {
             const date = new Date(item.recorded_at);
             let key;
-            if (granularity === 'daily') {
+            if (granularity === 'hourly') {
+                key = date.toISOString().substring(0, 13); // YYYY-MM-DDTHH
+            } else if (granularity === 'daily') {
                 key = date.toISOString().split('T')[0];
             } else if (granularity === 'weekly') {
                 const d = new Date(date);
@@ -390,10 +390,33 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (granularity === 'yearly') {
                 key = `${date.getFullYear()}`;
             }
-            groups[key] = item; // Overwrites so we get the latest point in the group
+            groups[key] = item; // Latest point in period wins
         });
-        
-        return Object.keys(groups).sort().map(key => groups[key]);
+
+        // Gap filling for Daily
+        if (granularity === 'daily') {
+            const sortedKeys = Object.keys(groups).sort();
+            if (sortedKeys.length > 1) {
+                const start = new Date(sortedKeys[0]);
+                const end = new Date(sortedKeys[sortedKeys.length - 1]);
+                let curr = new Date(start);
+                while (curr <= end) {
+                    const k = curr.toISOString().split('T')[0];
+                    if (!groups[k]) {
+                        // Create a placeholder with null values for "empty" look
+                        groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
+                    }
+                    curr.setDate(curr.getDate() + 1);
+                }
+            }
+        }
+
+        return Object.keys(groups).sort().map(k => groups[k]);
+    };
+
+    const getProcessedStats = () => {
+        const granularity = granularitySelect.value;
+        return processChartStats(currentChannelData.stats, granularity);
     };
 
     const updateChart = () => {
@@ -424,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     fill: true,
                     backgroundColor: gradient,
                     tension: 0.3,
-                    spanGaps: true // Handle missing data points gracefully
+                    spanGaps: false // User wants gaps for missing data
                 }]
             },
             options: {
@@ -491,26 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const colors = ['#ff4d4d', '#2196f3', '#9d50bb', '#00e676', '#ffb300', '#00bfa5', '#e91e63', '#3f51b5', '#cddc39', '#ff5722'];
         
         const datasets = compareData.map((channel, i) => {
-            const stats = channel.stats;
-            const groups = {};
-            stats.forEach(item => {
-                const date = new Date(item.recorded_at);
-                let key;
-                if (granularity === 'daily') key = date.toISOString().split('T')[0];
-                else if (granularity === 'weekly') {
-                    const d = new Date(date);
-                    const day = d.getDay();
-                    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-                    key = new Date(d.setDate(diff)).toISOString().split('T')[0];
-                } else if (granularity === 'monthly') {
-                    key = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-                } else if (granularity === 'yearly') {
-                    key = `${date.getFullYear()}`;
-                }
-                groups[key] = item;
-            });
-            
-            const processed = Object.keys(groups).sort().map(k => groups[k]);
+            const processed = processChartStats(channel.stats, granularity);
             
             return {
                 label: channel.title,
@@ -521,7 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pointHoverRadius: 5,
                 fill: false,
                 tension: 0.3,
-                spanGaps: true
+                spanGaps: false // User wants gaps for missing data
             };
         });
 
