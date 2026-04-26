@@ -44,6 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChannelData = null;
     let currentChartType = 'subscribers';
     let suggestionTimeout = null;
+    let liveStatsInterval = null;
+
+    // Initialize Odometers
+    const subOdometer = new Odometer({ el: subCount, value: 0, format: '(,ddd)', theme: 'minimal' });
+    const viewOdometer = new Odometer({ el: viewCount, value: 0, format: '(,ddd)', theme: 'minimal' });
+    const videoOdometer = new Odometer({ el: videoCount, value: 0, format: '(,ddd)', theme: 'minimal' });
 
     // Helper: get thumbnail URL from any API response object
     const getThumb = (obj) => obj.thumbnails || obj.thumbnail || obj.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
@@ -148,6 +154,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Core Search Logic ---
     const handleSearch = async () => {
         if (!query) return;
+        
+        clearInterval(liveStatsInterval);
         suggestions.classList.add('hidden');
         showState('loading');
         
@@ -330,10 +338,30 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         const latestStats = data.stats[data.stats.length - 1];
-        subCount.textContent = formatNumber(latestStats.subscribers);
-        viewCount.textContent = formatNumber(latestStats.views);
-        videoCount.textContent = formatNumber(latestStats.videos);
+        
+        // Initial set for odometers
+        subOdometer.update(latestStats.subscribers);
+        viewOdometer.update(latestStats.views);
+        videoOdometer.update(latestStats.videos);
+        
         updateChart();
+        startLiveStats(data.id);
+    };
+
+    const startLiveStats = (channelId) => {
+        clearInterval(liveStatsInterval);
+        // Poll every 2 seconds for truly live experience
+        liveStatsInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`);
+                const data = await res.json();
+                if (data && data.stats) {
+                    subOdometer.update(Math.floor(data.stats.estCount));
+                    viewOdometer.update(data.stats.viewCount);
+                    videoOdometer.update(data.stats.videoCount);
+                }
+            } catch (e) { console.warn('Live stats fetch failed', e); }
+        }, 2000);
     };
 
 
