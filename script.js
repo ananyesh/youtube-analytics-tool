@@ -47,6 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChartType = 'subscribers';
     let suggestionTimeout = null;
 
+    // Helper: get thumbnail URL from any API response object
+    const getThumb = (obj) => obj.thumbnails || obj.thumbnail || obj.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+
     // Compare State
     let compareData = [];
     let compChart = null;
@@ -122,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const item = document.createElement('div');
             item.className = 'suggestion-item';
             item.innerHTML = `
-                <img src="${res.thumbnail_url}" alt="">
+                <img src="${getThumb(res)}" alt="" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
                 <div>
                     <div class="name">${res.title}</div>
                     <div class="handle">ID: ${res.id}</div>
@@ -244,9 +247,8 @@ document.addEventListener('DOMContentLoaded', () => {
         results.forEach(res => {
             const item = document.createElement('div');
             item.className = 'suggestion-item';
-            const thumbUrl = res.thumbnails || res.thumbnail || res.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
             item.innerHTML = `
-                <img src="${thumbUrl}" alt="">
+                <img src="${getThumb(res)}" alt="" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
                 <div>
                     <div class="name">${res.title}</div>
                     <div class="handle">ID: ${res.id}</div>
@@ -300,11 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderCompareChips = () => {
         compareChips.innerHTML = '';
         compareData.forEach(c => {
-            const thumbUrl = c.thumbnails || c.thumbnail || c.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
             const chip = document.createElement('div');
             chip.className = 'chip';
             chip.innerHTML = `
-                <img src="${thumbUrl}" alt="">
+                <img src="${getThumb(c)}" alt="" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
                 <span>${c.title}</span>
                 <button class="chip-remove"><i class="fas fa-times"></i></button>
             `;
@@ -317,12 +318,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = currentChannelData;
         
         // Handle varying thumbnail keys between APIs
-        const thumbUrl = data.thumbnails || data.thumbnail || data.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+        const thumbUrl = getThumb(data);
         
         // Update header logo container
-        logoContainer.innerHTML = `<img src="${thumbUrl}" class="header-thumb" alt="Profile">`;
+        logoContainer.innerHTML = `<img src="${thumbUrl}" class="header-thumb" alt="Profile" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">`;
 
         channelThumbnail.src = thumbUrl;
+        channelThumbnail.onerror = function() { this.src = 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'; };
         channelTitle.textContent = data.title;
         countryTag.innerHTML = `<i class="fas fa-globe"></i> ${data.country || 'Global'}`;
         const date = new Date(data.published_at);
@@ -412,20 +414,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchLogosBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>Processing ${i+1}/${targetSnapshots.length}...</span>`;
                 try {
                     const html = await fetchProxy(archiveUrl);
-                    const logoRegex = /https:\/\/(yt3\.ggpht\.com\/[a-zA-Z0-9\-_=]+|lh3\.googleusercontent\.com\/[a-zA-Z0-9\-_=]+)/g;
+                    // Match modern YouTube profile image URLs (contain slashes, dashes, dots, etc.)
+                    const logoRegex = /https:\/\/(yt3\.ggpht\.com\/[a-zA-Z0-9\-_\/\.=?&%]+|lh3\.googleusercontent\.com\/[a-zA-Z0-9\-_\/\.=?&%]+)/g;
                     const nameRegex = /<title>(.*?) - YouTube<\/title>/;
-                    const matches = html.match(logoRegex);
+                    let matches = html.match(logoRegex);
                     const nameMatch = html.match(nameRegex);
                     const historicalName = nameMatch ? nameMatch[1].replace(' - YouTube', '') : currentChannelData.title;
                     if (matches) {
-                        const rawLogo = matches.find(m => !m.includes('favicon') && !m.includes('icon'));
+                        // Deduplicate and filter out tiny icons
+                        matches = [...new Set(matches)];
+                        const rawLogo = matches.find(m => 
+                            !m.includes('favicon') && 
+                            !m.includes('/icon') && 
+                            m.length > 60
+                        ) || matches[0];
                         if (rawLogo) {
-                            const cleanLogo = rawLogo.split('=')[0]; 
-                            if (!foundLogos.has(cleanLogo)) {
-                                foundLogos.add(cleanLogo);
+                            // Use base URL for deduplication but keep full URL for loading
+                            const dedupeKey = rawLogo.split('=s')[0];
+                            if (!foundLogos.has(dedupeKey)) {
+                                foundLogos.add(dedupeKey);
                                 if (foundLogos.size === 1) logoGallery.innerHTML = '';
-                                const proxiedLogoUrl = `https://web.archive.org/web/${timestamp}im_/${cleanLogo}`;
-                                addLogoToGallery(proxiedLogoUrl, timestamp, historicalName);
+                                // Try multiple URL strategies for the image
+                                const proxiedLogoUrl = `https://web.archive.org/web/${timestamp}im_/${rawLogo}`;
+                                addLogoToGallery(proxiedLogoUrl, rawLogo, timestamp, historicalName);
                             }
                         }
                     }
@@ -443,18 +454,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const addLogoToGallery = (url, timestamp, name) => {
+    const addLogoToGallery = (proxyUrl, directUrl, timestamp, name) => {
         const year = timestamp.substring(0, 4);
         const month = timestamp.substring(4, 6);
         const day = timestamp.substring(6, 8);
         const dateStr = `${year}-${month}-${day}`;
         const item = document.createElement('div');
         item.className = 'logo-item';
-        item.innerHTML = `
-            <img src="${url}" alt="Historical Logo" onload="if(this.naturalWidth<=5)this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
-            <div class="logo-name" title="${name}">${name}</div>
-            <div class="date"><i class="far fa-clock"></i> ${dateStr}</div>
-        `;
+        const fallbackYT = 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
+        // Build the img element programmatically so we can set up a fallback chain
+        const img = document.createElement('img');
+        img.alt = 'Historical Logo';
+        img.src = proxyUrl;
+        let triedDirect = false;
+        img.onerror = function() {
+            if (!triedDirect) {
+                triedDirect = true;
+                this.src = directUrl; // Try the direct yt3 URL
+            } else {
+                this.src = fallbackYT;
+            }
+        };
+        img.onload = function() {
+            if (this.naturalWidth <= 5 || this.naturalHeight <= 5) {
+                if (!triedDirect) {
+                    triedDirect = true;
+                    this.src = directUrl;
+                } else {
+                    this.src = fallbackYT;
+                }
+            }
+        };
+        item.appendChild(img);
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'logo-name';
+        nameDiv.title = name;
+        nameDiv.textContent = name;
+        item.appendChild(nameDiv);
+        
+        const dateDiv = document.createElement('div');
+        dateDiv.className = 'date';
+        dateDiv.innerHTML = `<i class="far fa-clock"></i> ${dateStr}`;
+        item.appendChild(dateDiv);
+        
         logoGallery.appendChild(item);
     };
 
@@ -696,12 +739,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         filteredData.forEach((channel, index) => {
             const tr = document.createElement('tr');
-            const thumbUrl = channel.thumbnails || channel.thumbnail || channel.thumbnail_url || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png';
             tr.innerHTML = `
                 <td class="rank">#${index + 1}</td>
                 <td>
                     <div class="channel-cell">
-                        <img src="${thumbUrl}" alt="">
+                        <img src="${getThumb(channel)}" alt="" onerror="this.src='https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png'">
                         <div>
                             <div>${channel.title}</div>
                             <div style="font-size:0.75rem; color:var(--text-secondary);">${channel.category}</div>
