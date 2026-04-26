@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.1.1 Initialized');
+    console.log('YT Analytics v2.2 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -404,17 +404,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const processChartStats = (stats, granularity) => {
         if (!stats || stats.length === 0) return [];
         
-        // If hourly, return raw stats (sorted) to show every single available data point
-        if (granularity === 'hourly') {
-            return [...stats].sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
-        }
-
-        // For other granularities, group by period
+        // Group by period
         const groups = {};
         stats.forEach(item => {
             const date = new Date(item.recorded_at);
             let key;
-            if (granularity === 'daily') {
+            if (granularity === 'hourly') {
+                key = date.toISOString().substring(0, 13); // YYYY-MM-DDTHH
+            } else if (granularity === 'daily') {
                 key = date.toISOString().split('T')[0];
             } else if (granularity === 'weekly') {
                 const d = new Date(date);
@@ -429,8 +426,8 @@ document.addEventListener('DOMContentLoaded', () => {
             groups[key] = item; // Latest point in period wins
         });
 
-        // Gap filling for Daily
-        if (granularity === 'daily') {
+        // Gap filling
+        if (granularity === 'daily' || granularity === 'hourly') {
             const sortedKeys = Object.keys(groups).sort();
             if (sortedKeys.length > 1) {
                 const start = new Date(sortedKeys[0]);
@@ -438,11 +435,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 let curr = new Date(start);
                 
                 while (curr <= end) {
-                    const k = curr.toISOString().split('T')[0];
-                    if (!groups[k]) {
-                        groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
+                    let k;
+                    if (granularity === 'daily') {
+                        k = curr.toISOString().split('T')[0];
+                        if (!groups[k]) {
+                            groups[k] = { recorded_at: curr.toISOString(), subscribers: null, views: null, videos: null };
+                        }
+                        curr.setDate(curr.getDate() + 1);
+                    } else {
+                        k = curr.toISOString().substring(0, 13);
+                        if (!groups[k]) {
+                            const snappedTime = k + ":00:00.000Z";
+                            groups[k] = { recorded_at: snappedTime, subscribers: null, views: null, videos: null };
+                        } else {
+                            groups[k].recorded_at = k + ":00:00.000Z";
+                        }
+                        curr.setHours(curr.getHours() + 1);
                     }
-                    curr.setDate(curr.getDate() + 1);
                 }
             }
         }
