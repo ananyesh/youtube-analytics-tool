@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v2.3 Initialized');
+    console.log('YT Analytics v2.3.1 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -435,34 +435,59 @@ document.addEventListener('DOMContentLoaded', () => {
             groups[key] = { ...item, recorded_at: snapped };
         });
 
-        // Gap filling
+        // Gap filling with safety limits to prevent lag
         const sortedKeys = Object.keys(groups).sort();
         if (sortedKeys.length > 1 && (granularity === 'daily' || granularity === 'hourly' || granularity === 'weekly' || granularity === 'monthly')) {
             const start = new Date(groups[sortedKeys[0]].recorded_at);
             const end = new Date(groups[sortedKeys[sortedKeys.length - 1]].recorded_at);
             let curr = new Date(start);
+            let iterations = 0;
+            const MAX_GAP_POINTS = 3000; // Total points to allow before stopping gap fill
             
-            while (curr <= end) {
+            // For hourly, only gap fill if the range is less than 60 days to prevent browser crash
+            const daysDiff = (end - start) / (1000 * 60 * 60 * 24);
+            if (granularity === 'hourly' && daysDiff > 60) {
+                return Object.keys(groups).sort().map(k => groups[k]);
+            }
+
+            while (curr <= end && iterations < 5000) {
+                iterations++;
                 let k, s;
                 if (granularity === 'hourly') {
                     k = curr.toISOString().substring(0, 13);
                     s = k + ":00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    if (!groups[k]) {
+                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
+                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                        }
+                    }
                     curr.setUTCHours(curr.getUTCHours() + 1);
                 } else if (granularity === 'daily') {
                     k = curr.toISOString().split('T')[0];
                     s = k + "T00:00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    if (!groups[k]) {
+                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
+                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                        }
+                    }
                     curr.setUTCDate(curr.getUTCDate() + 1);
                 } else if (granularity === 'weekly') {
                     k = curr.toISOString().split('T')[0];
                     s = k + "T00:00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    if (!groups[k]) {
+                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
+                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                        }
+                    }
                     curr.setUTCDate(curr.getUTCDate() + 7);
                 } else if (granularity === 'monthly') {
                     k = curr.toISOString().substring(0, 7);
                     s = k + "-01T00:00:00.000Z";
-                    if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                    if (!groups[k]) {
+                        if (Object.keys(groups).length < MAX_GAP_POINTS) {
+                            groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
+                        }
+                    }
                     curr.setUTCMonth(curr.getUTCMonth() + 1);
                 } else {
                     break;
