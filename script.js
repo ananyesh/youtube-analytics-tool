@@ -48,8 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Odometers
     const subOdometer = new Odometer({ el: subCount, value: 0, format: '(,ddd)', theme: 'minimal' });
-    const viewOdometer = new Odometer({ el: document.getElementById('viewOdometer'), value: 0, theme: 'minimal' });
-    const videoOdometer = new Odometer({ el: document.getElementById('videoOdometer'), value: 0, theme: 'minimal' });
+    const viewOdometer = new Odometer({ el: viewCount, value: 0, format: '(,ddd)', theme: 'minimal' });
+    const videoOdometer = new Odometer({ el: videoCount, value: 0, format: '(,ddd)', theme: 'minimal' });
 
     // Ensure Zoom plugin is active
     if (typeof ChartZoom !== 'undefined') {
