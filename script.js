@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.1 Initialized');
+    console.log('YT Analytics v3.2 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -277,8 +277,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let maxSubs = 0, maxViews = 0;
             statsData[0].stats = rawStats.filter(s => {
                 if (s.subscribers === 0 && s.views === 0) return false;
-                if (s.subscribers < maxSubs) s.subscribers = maxSubs; else maxSubs = s.subscribers;
-                if (s.views < maxViews) s.views = maxViews; else maxViews = s.views;
                 return true;
             });
             
@@ -601,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 animation: datasets.some(d => d.data.length > 1000) ? false : { duration: 1000 },
                 responsive: true,
                 maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 plugins: {
                     legend: { labels: { color: '#fff' } },
                     tooltip: { 
