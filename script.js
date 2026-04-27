@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.5 Initialized');
+    console.log('YT Analytics v4.6 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -368,13 +368,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = currentChannelData;
         if (!data || !data.stats || data.stats.length < 1) return;
 
-        // --- HYBRID LIVE ENGINE (v4.5) ---
+        // --- SCTOOLS NATIVE ENGINE (v4.6) ---
         const latest = data.stats[data.stats.length - 1];
         lastSimulatedSubs = latest.subscribers;
         let lastUpdateTime = Date.now();
         let useSimulation = false;
 
-        // Initial Velocity Calculation (Fallback)
+        // Velocity for smooth fallback
         if (data.stats.length >= 2) {
             const previous = data.stats[data.stats.length - 2];
             const timeDiffSeconds = (new Date(latest.recorded_at) - new Date(previous.recorded_at)) / 1000;
@@ -390,31 +390,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!useSimulation) {
                 try {
-                    // Try Mixerno (High stability, better CORS support)
-                    const res = await fetch(`https://api.mixerno.space/youtube/channel/${channelId}`);
+                    // Bypass CORS using corsproxy.io for the requested SCTools API
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://ests.sctools.org/api/get/${channelId}`)}`;
+                    const res = await fetch(proxyUrl);
                     const json = await res.json();
                     
-                    if (json && json.counts && json.counts[0]) {
-                        const realCount = json.counts[0].count;
+                    if (json && json.stats) {
+                        const realCount = Math.floor(json.stats.estCount);
                         lastSimulatedSubs = realCount;
                         subOdometer.update(realCount);
-                        // Stay on live data
+                        viewOdometer.update(json.stats.viewCount);
+                        videoOdometer.update(json.stats.videoCount);
                     } else {
                         throw new Error('Invalid live data');
                     }
                 } catch (e) {
-                    console.warn('Live API unavailable. Switching to Silent Turbo Simulation.');
-                    useSimulation = true; // Permanent fallback for this session
+                    console.warn('SCTools API via Proxy failed. Using internal simulation.');
+                    // Don't set useSimulation to true permanently yet, try again next tick
                 }
             }
 
-            if (useSimulation) {
-                const jitter = (Math.random() - 0.5) * 0.1;
-                lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
-                subOdometer.update(Math.floor(lastSimulatedSubs));
-            }
+            // Always apply a tiny bit of simulation for ultra-smooth sub-second odometer movement
+            const jitter = (Math.random() - 0.5) * 0.05;
+            lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
+            subOdometer.update(Math.floor(lastSimulatedSubs));
 
-            // Sync with chart every 10 seconds
+            // Sync with chart
             if (now % 10000 < 1000) {
                 if (currentChannelData && currentChannelData.id === channelId) {
                     const sessionPoint = {
