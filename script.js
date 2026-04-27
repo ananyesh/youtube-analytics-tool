@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.2 Initialized');
+    console.log('YT Analytics v4.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChartType = 'subscribers';
     let suggestionTimeout = null;
     let liveStatsInterval = null;
+    let currentSearchId = 0; // Search Identity Tracking to prevent race conditions
 
     // Initialize Odometers
     const subOdometer = new Odometer({ el: subCount, value: 0, format: '(,ddd)', theme: 'minimal' });
@@ -162,7 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const query = channelInput.value.trim();
         if (!query) return;
         
-        clearInterval(liveStatsInterval);
+        // KILL OLD PROCESSES
+        const searchId = ++currentSearchId;
+        if (liveStatsInterval) {
+            clearInterval(liveStatsInterval);
+            liveStatsInterval = null;
+        }
+        
         suggestions.classList.add('hidden');
         showState('loading');
         
@@ -201,11 +208,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             statsData[0].stats = cleanedStats;
-            currentChannelData = statsData[0];
+            
+            // SEARCH IDENTITY CHECK: Only update if this is still the latest search
+            if (searchId !== currentSearchId) return;
 
+            currentChannelData = statsData[0];
             renderDashboard();
             showState('dashboard');
         } catch (err) {
+            if (searchId !== currentSearchId) return;
             console.error(err);
             errorMsg.textContent = err.message;
             showState('error');
@@ -347,14 +358,32 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const startLiveStats = (channelId) => {
-        clearInterval(liveStatsInterval);
+        if (liveStatsInterval) {
+            clearInterval(liveStatsInterval);
+            liveStatsInterval = null;
+        }
+        
         // Poll every 2 seconds for truly live experience
         liveStatsInterval = setInterval(async () => {
             try {
                 const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`);
                 const data = await res.json();
+                
                 if (data && data.stats) {
                     const estCount = Math.floor(data.stats.estCount);
+                    
+                    // DATA INTEGRITY GUARD: If live count is >5x different from history, it's a fallback/bug
+                    const historicalCount = currentChannelData.stats[currentChannelData.stats.length - 1].subscribers;
+                    const diffRatio = Math.max(estCount, historicalCount) / Math.min(estCount, historicalCount);
+                    
+                    if (diffRatio > 5 && historicalCount > 1000) {
+                        console.warn('Live API returned outlier data (fallback detected). Reverting to internal estimation.');
+                        // Fallback: Just add a tiny random increment to keep the odometer "alive"
+                        const fallbackCount = historicalCount + Math.floor(Math.random() * 5);
+                        subOdometer.update(fallbackCount);
+                        return;
+                    }
+
                     subOdometer.update(estCount);
                     viewOdometer.update(data.stats.viewCount);
                     videoOdometer.update(data.stats.videoCount);
