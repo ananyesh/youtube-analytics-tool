@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.6 Initialized');
+    console.log('YT Analytics v3.7 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -604,7 +604,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const colors = ['#ff4d4d', '#2196f3', '#9d50bb', '#00e676', '#ffb300', '#00bfa5', '#e91e63', '#3f51b5', '#cddc39', '#ff5722'];
         
         const datasets = compareData.map((channel, i) => {
-            const processed = processChartStats(channel.stats, granularity);
+            let statsToProcess = channel.stats;
+            // PERFORMANCE FIX: Limit Hourly comparison to last 30 days to prevent browser crash
+            if (granularity === 'hourly' && statsToProcess.length > 720) {
+                statsToProcess = statsToProcess.slice(-720);
+            }
+            
+            const processed = processChartStats(statsToProcess, granularity);
             const isLarge = processed.length > 1000;
             return {
                 label: channel.title,
@@ -642,7 +648,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     zoom: {
                         zoom: {
-                            drag: { enabled: true, backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.2)', borderWidth: 1 },
+                            drag: { 
+                                enabled: true, 
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+                                borderColor: 'rgba(255, 255, 255, 0.2)', 
+                                borderWidth: 1 
+                            },
                             mode: 'x'
                         }
                     }
