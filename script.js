@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.4 Initialized');
+    console.log('YT Analytics v4.5 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -366,38 +366,60 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const data = currentChannelData;
-        if (!data || !data.stats || data.stats.length < 2) return;
+        if (!data || !data.stats || data.stats.length < 1) return;
 
-        // --- TURBO GROWTH ENGINE (v4.4) ---
-        // Calculate velocity based on last 2 available points
+        // --- HYBRID LIVE ENGINE (v4.5) ---
         const latest = data.stats[data.stats.length - 1];
-        const previous = data.stats[data.stats.length - 2];
-        const timeDiffSeconds = (new Date(latest.recorded_at) - new Date(previous.recorded_at)) / 1000;
-        const subDiff = latest.subscribers - previous.subscribers;
-        
-        subsPerSecond = timeDiffSeconds > 0 ? (subDiff / timeDiffSeconds) : 0;
-        if (subsPerSecond < 0) subsPerSecond = 0; 
-
         lastSimulatedSubs = latest.subscribers;
         let lastUpdateTime = Date.now();
+        let useSimulation = false;
 
-        liveStatsInterval = setInterval(() => {
+        // Initial Velocity Calculation (Fallback)
+        if (data.stats.length >= 2) {
+            const previous = data.stats[data.stats.length - 2];
+            const timeDiffSeconds = (new Date(latest.recorded_at) - new Date(previous.recorded_at)) / 1000;
+            const subDiff = latest.subscribers - previous.subscribers;
+            subsPerSecond = timeDiffSeconds > 0 ? (subDiff / timeDiffSeconds) : 0;
+            if (subsPerSecond < 0) subsPerSecond = 0;
+        }
+
+        liveStatsInterval = setInterval(async () => {
             const now = Date.now();
             const deltaSeconds = (now - lastUpdateTime) / 1000;
             lastUpdateTime = now;
 
-            const jitter = (Math.random() - 0.5) * 0.1; 
-            lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
-            
-            const displaySubs = Math.floor(lastSimulatedSubs);
-            subOdometer.update(displaySubs);
+            if (!useSimulation) {
+                try {
+                    // Try Mixerno (High stability, better CORS support)
+                    const res = await fetch(`https://api.mixerno.space/youtube/channel/${channelId}`);
+                    const json = await res.json();
+                    
+                    if (json && json.counts && json.counts[0]) {
+                        const realCount = json.counts[0].count;
+                        lastSimulatedSubs = realCount;
+                        subOdometer.update(realCount);
+                        // Stay on live data
+                    } else {
+                        throw new Error('Invalid live data');
+                    }
+                } catch (e) {
+                    console.warn('Live API unavailable. Switching to Silent Turbo Simulation.');
+                    useSimulation = true; // Permanent fallback for this session
+                }
+            }
 
-            // Record session point for chart every 10 seconds
+            if (useSimulation) {
+                const jitter = (Math.random() - 0.5) * 0.1;
+                lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
+                subOdometer.update(Math.floor(lastSimulatedSubs));
+            }
+
+            // Sync with chart every 10 seconds
             if (now % 10000 < 1000) {
                 if (currentChannelData && currentChannelData.id === channelId) {
                     const sessionPoint = {
                         recorded_at: new Date(now).toISOString(),
-                        subscribers: displaySubs,
+                        subscribers: Math.floor(lastSimulatedSubs),
                         views: latest.views,
                         videos: latest.videos
                     };
@@ -413,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-        }, 1000);
+        }, 2000);
     };
 
 
