@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.2 Initialized');
+    console.log('YT Analytics v3.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -273,8 +273,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (!statsData || statsData.length === 0) throw new Error('Stats not found');
             
-            let rawStats = statsData[0].stats.reverse();
-            let maxSubs = 0, maxViews = 0;
+            // Ensure ASCENDING order (Oldest to Newest) for the processing engine
+            let rawStats = statsData[0].stats.sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+            
             statsData[0].stats = rawStats.filter(s => {
                 if (s.subscribers === 0 && s.views === 0) return false;
                 return true;
@@ -450,15 +451,32 @@ document.addEventListener('DOMContentLoaded', () => {
                             curr.setUTCHours(curr.getUTCHours() + 1);
                         }
                     }
-                } else if (granularity === 'daily') {
-                    curr.setUTCDate(curr.getUTCDate() + 1);
-                    const diffDays = (next - start) / (1000 * 60 * 60 * 24);
+                } else if (granularity === 'daily' || granularity === 'weekly' || granularity === 'monthly') {
+                    const diffMs = next - start;
+                    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                    
                     if (diffDays <= MAX_GAP_DAYS) {
+                        if (granularity === 'daily') curr.setUTCDate(curr.getUTCDate() + 1);
+                        else if (granularity === 'weekly') curr.setUTCDate(curr.getUTCDate() + 7);
+                        else if (granularity === 'monthly') curr.setUTCMonth(curr.getUTCMonth() + 1);
+
                         while (curr < next) {
-                            const k = curr.toISOString().split('T')[0];
-                            const s = k + "T00:00:00.000Z";
+                            let k, s;
+                            if (granularity === 'daily') {
+                                k = curr.toISOString().split('T')[0];
+                                s = k + "T00:00:00.000Z";
+                            } else if (granularity === 'weekly') {
+                                k = curr.toISOString().split('T')[0];
+                                s = k + "T00:00:00.000Z";
+                            } else {
+                                k = curr.toISOString().substring(0, 7);
+                                s = k + "-01T00:00:00.000Z";
+                            }
                             if (!groups[k]) groups[k] = { recorded_at: s, subscribers: null, views: null, videos: null };
-                            curr.setUTCDate(curr.getUTCDate() + 1);
+                            
+                            if (granularity === 'daily') curr.setUTCDate(curr.getUTCDate() + 1);
+                            else if (granularity === 'weekly') curr.setUTCDate(curr.getUTCDate() + 7);
+                            else curr.setUTCMonth(curr.getUTCMonth() + 1);
                         }
                     }
                 }
@@ -569,9 +587,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Compare Chart Logic ---
     const updateCompareChart = () => {
-        const ctx = document.getElementById('compareChart').getContext('2d');
+        const chartElem = document.getElementById('compareChart');
+        if (!chartElem) return;
+        const ctx = chartElem.getContext('2d');
         if (compChart) compChart.destroy();
         if (compareData.length === 0) return;
+
+        // Ensure canvas has dimensions before rendering (fixes 'Empty Graph' issue)
+        if (chartElem.clientWidth === 0) {
+            setTimeout(updateCompareChart, 100);
+            return;
+        }
 
         const granularity = document.getElementById('compareGranularitySelect').value;
         const colors = ['#ff4d4d', '#2196f3', '#9d50bb', '#00e676', '#ffb300', '#00bfa5', '#e91e63', '#3f51b5', '#cddc39', '#ff5722'];
