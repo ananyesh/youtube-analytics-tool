@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.3 Initialized');
+    console.log('YT Analytics v3.4 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -430,7 +430,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Smart Gap Filling: Only fill gaps if they are reasonably small to prevent browser lag
         const sortedKeys = Object.keys(groups).sort();
-        if (sortedKeys.length > 1 && granularity !== 'yearly') {
+        // SAFETY GATE: If we already have a massive dataset (>5000 points), skip gap-filling to prevent crash
+        if (sortedKeys.length > 1 && sortedKeys.length < 5000 && granularity !== 'yearly') {
             const MAX_GAP_HOURS = 48; // Max hours to fill in one go for hourly
             const MAX_GAP_DAYS = 31;  // Max days to fill for daily/weekly
             
