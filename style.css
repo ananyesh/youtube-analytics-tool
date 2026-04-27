@@ -843,6 +843,12 @@ header {
     .search-box button { width: 100%; margin-top: 0.5rem; padding: 1rem; }
     .chart-header { flex-direction: column; align-items: stretch; }
     .chart-controls { justify-content: space-between; }
+    
+    /* Maintenance Mobile Fixes */
+    .maintenance-card { padding: 40px 20px; }
+    .maintenance-content h2 { font-size: 1.5rem; }
+    .maintenance-icon { font-size: 3rem; }
+    .maintenance-content p { font-size: 0.9rem; }
 }
 
 /* Maintenance Card */
