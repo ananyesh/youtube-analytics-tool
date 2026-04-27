@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.9 Initialized');
+    console.log('YT Analytics v4.1 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -605,11 +605,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const datasets = compareData.map((channel, i) => {
             let statsToProcess = channel.stats || [];
-            // PERFORMANCE FIX: Limit Hourly comparison to a safe window to prevent browser crash
-            if (granularity === 'hourly' && statsToProcess.length > 1000) {
-                statsToProcess = statsToProcess.slice(-1000);
-            }
-            
+            // Infinite History enabled for Comparison mode (v4.0)
             const processed = processChartStats(statsToProcess, granularity);
             const isLarge = processed.length > 1000;
             return {
