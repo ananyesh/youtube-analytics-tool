@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.3 Initialized');
+    console.log('YT Analytics v4.4 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -46,7 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChartType = 'subscribers';
     let suggestionTimeout = null;
     let liveStatsInterval = null;
-    let currentSearchId = 0; // Search Identity Tracking to prevent race conditions
+    let currentSearchId = 0;
+    let lastSimulatedSubs = 0; // Growth Simulation State
+    let subsPerSecond = 0;
 
     // Initialize Odometers
     const subOdometer = new Odometer({ el: subCount, value: 0, format: '(,ddd)', theme: 'minimal' });
@@ -362,60 +364,56 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(liveStatsInterval);
             liveStatsInterval = null;
         }
+
+        const data = currentChannelData;
+        if (!data || !data.stats || data.stats.length < 2) return;
+
+        // --- TURBO GROWTH ENGINE (v4.4) ---
+        // Calculate velocity based on last 2 available points
+        const latest = data.stats[data.stats.length - 1];
+        const previous = data.stats[data.stats.length - 2];
+        const timeDiffSeconds = (new Date(latest.recorded_at) - new Date(previous.recorded_at)) / 1000;
+        const subDiff = latest.subscribers - previous.subscribers;
         
-        // Poll every 2 seconds for truly live experience
-        liveStatsInterval = setInterval(async () => {
-            try {
-                const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`);
-                const data = await res.json();
-                
-                if (data && data.stats) {
-                    const estCount = Math.floor(data.stats.estCount);
+        subsPerSecond = timeDiffSeconds > 0 ? (subDiff / timeDiffSeconds) : 0;
+        if (subsPerSecond < 0) subsPerSecond = 0; 
+
+        lastSimulatedSubs = latest.subscribers;
+        let lastUpdateTime = Date.now();
+
+        liveStatsInterval = setInterval(() => {
+            const now = Date.now();
+            const deltaSeconds = (now - lastUpdateTime) / 1000;
+            lastUpdateTime = now;
+
+            const jitter = (Math.random() - 0.5) * 0.1; 
+            lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
+            
+            const displaySubs = Math.floor(lastSimulatedSubs);
+            subOdometer.update(displaySubs);
+
+            // Record session point for chart every 10 seconds
+            if (now % 10000 < 1000) {
+                if (currentChannelData && currentChannelData.id === channelId) {
+                    const sessionPoint = {
+                        recorded_at: new Date(now).toISOString(),
+                        subscribers: displaySubs,
+                        views: latest.views,
+                        videos: latest.videos
+                    };
+                    currentChannelData.stats.push(sessionPoint);
+                    if (currentChannelData.stats.length > 500) currentChannelData.stats.splice(50, 1);
                     
-                    // DATA INTEGRITY GUARD: If live count is >5x different from history, it's a fallback/bug
-                    const historicalCount = currentChannelData.stats[currentChannelData.stats.length - 1].subscribers;
-                    const diffRatio = Math.max(estCount, historicalCount) / Math.min(estCount, historicalCount);
-                    
-                    if (diffRatio > 5 && historicalCount > 1000) {
-                        console.warn('Live API returned outlier data (fallback detected). Reverting to internal estimation.');
-                        // Fallback: Just add a tiny random increment to keep the odometer "alive"
-                        const fallbackCount = historicalCount + Math.floor(Math.random() * 5);
-                        subOdometer.update(fallbackCount);
-                        return;
-                    }
-
-                    subOdometer.update(estCount);
-                    viewOdometer.update(data.stats.viewCount);
-                    videoOdometer.update(data.stats.videoCount);
-
-                    // RECORD LIVE POINT: Append to historical data for the session
-                    if (currentChannelData && currentChannelData.id === channelId) {
-                        const now = new Date().toISOString();
-                        const newPoint = {
-                            recorded_at: now,
-                            subscribers: estCount,
-                            views: data.stats.viewCount,
-                            videos: data.stats.videoCount
-                        };
-                        currentChannelData.stats.push(newPoint);
-                        
-                        // Limit to 500 session points to prevent memory bloat
-                        if (currentChannelData.stats.length > 500 + 30) {
-                            currentChannelData.stats.splice(30, 1);
-                        }
-
-                        // SMOOTH UPDATE: Don't recreate the chart, just push the point
-                        if (growthChart && granularitySelect.value === 'hourly') {
-                            growthChart.data.datasets[0].data.push({
-                                x: new Date(now),
-                                y: newPoint[currentChartType]
-                            });
-                            growthChart.update('none'); // Update without animation or reset
-                        }
+                    if (growthChart && granularitySelect.value === 'hourly') {
+                        growthChart.data.datasets[0].data.push({
+                            x: new Date(sessionPoint.recorded_at),
+                            y: sessionPoint[currentChartType]
+                        });
+                        growthChart.update('none');
                     }
                 }
-            } catch (e) { console.warn('Live stats fetch failed', e); }
-        }, 2000);
+            }
+        }, 1000);
     };
 
 
