@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.7 Initialized');
+    console.log('YT Analytics v3.8 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -681,6 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Leaderboard Logic ---
     const fetchLeaderboard = async () => {
         const tbody = document.getElementById('leaderboardBody');
+        if (!tbody) return; // Maintenance Mode: Prevent error while leaderboard is offline
         tbody.innerHTML = '<tr><td colspan="4" class="text-center"><i class="fas fa-spinner fa-spin"></i> Fetching Live Stats for Top Global Channels...</td></tr>';
         
         try {
