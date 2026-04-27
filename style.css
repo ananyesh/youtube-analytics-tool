@@ -872,8 +872,10 @@ header {
 
 .maintenance-content h2 {
     font-size: 2rem;
-    margin-bottom: 15px;
-    text-align: center;
+    margin: 0 auto 15px auto !important;
+    text-align: center !important;
+    width: 100% !important;
+    display: block !important;
     background: linear-gradient(135deg, #fff 0%, #aaa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -889,9 +891,11 @@ header {
 .maintenance-content p {
     color: #888;
     max-width: 500px;
-    margin: 0 auto 30px;
+    margin: 0 auto 30px auto !important;
     line-height: 1.6;
-    text-align: center;
+    text-align: center !important;
+    width: 100% !important;
+    display: block !important;
 }
 
 .progress-bar-container {

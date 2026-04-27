@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v3.8 Initialized');
+    console.log('YT Analytics v3.9 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -604,10 +604,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const colors = ['#ff4d4d', '#2196f3', '#9d50bb', '#00e676', '#ffb300', '#00bfa5', '#e91e63', '#3f51b5', '#cddc39', '#ff5722'];
         
         const datasets = compareData.map((channel, i) => {
-            let statsToProcess = channel.stats;
-            // PERFORMANCE FIX: Limit Hourly comparison to last 30 days to prevent browser crash
-            if (granularity === 'hourly' && statsToProcess.length > 720) {
-                statsToProcess = statsToProcess.slice(-720);
+            let statsToProcess = channel.stats || [];
+            // PERFORMANCE FIX: Limit Hourly comparison to a safe window to prevent browser crash
+            if (granularity === 'hourly' && statsToProcess.length > 1000) {
+                statsToProcess = statsToProcess.slice(-1000);
             }
             
             const processed = processChartStats(statsToProcess, granularity);
