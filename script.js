@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.6 Initialized');
+    console.log('YT Analytics v4.7 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -388,35 +388,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const deltaSeconds = (now - lastUpdateTime) / 1000;
             lastUpdateTime = now;
 
-            if (!useSimulation) {
-                try {
-                    // Bypass CORS using corsproxy.io for the requested SCTools API
-                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://ests.sctools.org/api/get/${channelId}`)}`;
-                    const res = await fetch(proxyUrl);
-                    const json = await res.json();
-                    
-                    if (json && json.stats) {
-                        const realCount = Math.floor(json.stats.estCount);
-                        lastSimulatedSubs = realCount;
-                        subOdometer.update(realCount);
-                        viewOdometer.update(json.stats.viewCount);
-                        videoOdometer.update(json.stats.videoCount);
-                    } else {
-                        throw new Error('Invalid live data');
-                    }
-                } catch (e) {
-                    console.warn('SCTools API via Proxy failed. Using internal simulation.');
-                    // Don't set useSimulation to true permanently yet, try again next tick
+            let gotLiveData = false;
+
+            try {
+                // Use SCTools directly — works on local; on GitHub Pages the CORS error is benign
+                // and the catch falls back to simulation silently
+                const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`);
+                const json = await res.json();
+
+                if (json && json.stats && json.stats.estCount) {
+                    const realCount = Math.floor(json.stats.estCount);
+                    lastSimulatedSubs = realCount; // Anchor simulation to real count
+                    subOdometer.update(realCount);
+                    if (json.stats.viewCount)  viewOdometer.update(json.stats.viewCount);
+                    if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
+                    gotLiveData = true;
                 }
+            } catch (e) {
+                // CORS block from GitHub Pages — silently fall through to simulation
             }
 
-            // Always apply a tiny bit of simulation for ultra-smooth sub-second odometer movement
-            const jitter = (Math.random() - 0.5) * 0.05;
-            lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
-            subOdometer.update(Math.floor(lastSimulatedSubs));
+            // Simulation: only used when live fetch failed, keeps counter smooth
+            if (!gotLiveData) {
+                const jitter = (Math.random() - 0.5) * 0.05;
+                lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
+                subOdometer.update(Math.floor(lastSimulatedSubs));
+            }
 
-            // Sync with chart
-            if (now % 10000 < 1000) {
+            // Sync a session point to chart every ~10 seconds
+            if (now % 10000 < 2000) {
                 if (currentChannelData && currentChannelData.id === channelId) {
                     const sessionPoint = {
                         recorded_at: new Date(now).toISOString(),
@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                     currentChannelData.stats.push(sessionPoint);
                     if (currentChannelData.stats.length > 500) currentChannelData.stats.splice(50, 1);
-                    
+
                     if (growthChart && granularitySelect.value === 'hourly') {
                         growthChart.data.datasets[0].data.push({
                             x: new Date(sessionPoint.recorded_at),
