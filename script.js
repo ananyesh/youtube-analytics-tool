@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.0 Initialized');
+    console.log('YT Analytics v5.1 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -171,9 +171,9 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(liveStatsInterval);
             liveStatsInterval = null;
         }
-        if (window._syncInterval) {
-            clearInterval(window._syncInterval);
-            window._syncInterval = null;
+        if (window._syncTimeout) {
+            clearTimeout(window._syncTimeout);
+            window._syncTimeout = null;
         }
         
         suggestions.classList.add('hidden');
@@ -420,14 +420,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 2000);
 
-        // --- SLOW LOOP (60s): Try SCTools quietly, anchor simulation if it responds ---
+
+        // --- SMART SYNC LOOP: Recursive timeout to prevent stacking ---
+        let isSyncing = false;
         const syncLive = async () => {
+            if (isSyncing) return;
+            isSyncing = true;
             try {
                 const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout max
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://ests.sctools.org/api/get/' + channelId)}`;
+                const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://ests.sctools.org/api/get/' + channelId)}&cache=` + Date.now();
                 const res = await fetch(proxyUrl, { signal: controller.signal });
-                clearTimeout(timeout);
+                clearTimeout(timeoutId);
                 const wrapper = await res.json();
                 if (wrapper && wrapper.contents) {
                     const json = JSON.parse(wrapper.contents);
@@ -437,12 +441,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
                     }
                 }
-            } catch (e) { /* Silent — SCTools is down, simulation continues */ }
+            } catch (e) { /* Silent fallback — SCTools is down, simulation continues */ }
+            isSyncing = false;
+            // Schedule next sync only after this one finishes
+            if (currentChannelData && currentChannelData.id === channelId) {
+                window._syncTimeout = setTimeout(syncLive, 10000); // Wait 10s between requests
+            }
         };
-        syncLive(); // Try immediately on load
-        const syncInterval = setInterval(syncLive, 5000); // Then every 5 seconds (Live Restoration)
-        // Store syncInterval reference so we can clear it on channel switch
-        window._syncInterval = syncInterval;
+        syncLive(); // Start first sync
     };
 
 
