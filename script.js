@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.7 Initialized');
+    console.log('YT Analytics v4.8 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -391,21 +391,25 @@ document.addEventListener('DOMContentLoaded', () => {
             let gotLiveData = false;
 
             try {
-                // Use SCTools directly — works on local; on GitHub Pages the CORS error is benign
-                // and the catch falls back to simulation silently
-                const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`);
-                const json = await res.json();
+                // Route through allorigins proxy to bypass CORS from GitHub Pages
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://ests.sctools.org/api/get/' + channelId)}`;
+                const res = await fetch(proxyUrl);
+                const wrapper = await res.json();
 
-                if (json && json.stats && json.stats.estCount) {
-                    const realCount = Math.floor(json.stats.estCount);
-                    lastSimulatedSubs = realCount; // Anchor simulation to real count
-                    subOdometer.update(realCount);
-                    if (json.stats.viewCount)  viewOdometer.update(json.stats.viewCount);
-                    if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
-                    gotLiveData = true;
+                // allorigins wraps the real response in wrapper.contents as a string
+                if (wrapper && wrapper.contents) {
+                    const json = JSON.parse(wrapper.contents);
+                    if (json && json.stats && json.stats.estCount) {
+                        const realCount = Math.floor(json.stats.estCount);
+                        lastSimulatedSubs = realCount;
+                        subOdometer.update(realCount);
+                        if (json.stats.viewCount)  viewOdometer.update(json.stats.viewCount);
+                        if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
+                        gotLiveData = true;
+                    }
                 }
             } catch (e) {
-                // CORS block from GitHub Pages — silently fall through to simulation
+                // SCTools down or proxy failed — simulation keeps counter smooth
             }
 
             // Simulation: only used when live fetch failed, keeps counter smooth
