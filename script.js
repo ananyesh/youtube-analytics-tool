@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.9 Initialized');
+    console.log('YT Analytics v5.0 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -440,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { /* Silent — SCTools is down, simulation continues */ }
         };
         syncLive(); // Try immediately on load
-        const syncInterval = setInterval(syncLive, 60000); // Then every 60 seconds
+        const syncInterval = setInterval(syncLive, 5000); // Then every 5 seconds (Live Restoration)
         // Store syncInterval reference so we can clear it on channel switch
         window._syncInterval = syncInterval;
     };
