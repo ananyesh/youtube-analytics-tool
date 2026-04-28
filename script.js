@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v4.8 Initialized');
+    console.log('YT Analytics v4.9 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -170,6 +170,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (liveStatsInterval) {
             clearInterval(liveStatsInterval);
             liveStatsInterval = null;
+        }
+        if (window._syncInterval) {
+            clearInterval(window._syncInterval);
+            window._syncInterval = null;
         }
         
         suggestions.classList.add('hidden');
@@ -383,41 +387,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (subsPerSecond < 0) subsPerSecond = 0;
         }
 
-        liveStatsInterval = setInterval(async () => {
+        // --- FAST LOOP (2s): Pure simulation, zero network calls, zero console errors ---
+        liveStatsInterval = setInterval(() => {
             const now = Date.now();
             const deltaSeconds = (now - lastUpdateTime) / 1000;
             lastUpdateTime = now;
 
-            let gotLiveData = false;
-
-            try {
-                // Route through allorigins proxy to bypass CORS from GitHub Pages
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://ests.sctools.org/api/get/' + channelId)}`;
-                const res = await fetch(proxyUrl);
-                const wrapper = await res.json();
-
-                // allorigins wraps the real response in wrapper.contents as a string
-                if (wrapper && wrapper.contents) {
-                    const json = JSON.parse(wrapper.contents);
-                    if (json && json.stats && json.stats.estCount) {
-                        const realCount = Math.floor(json.stats.estCount);
-                        lastSimulatedSubs = realCount;
-                        subOdometer.update(realCount);
-                        if (json.stats.viewCount)  viewOdometer.update(json.stats.viewCount);
-                        if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
-                        gotLiveData = true;
-                    }
-                }
-            } catch (e) {
-                // SCTools down or proxy failed — simulation keeps counter smooth
-            }
-
-            // Simulation: only used when live fetch failed, keeps counter smooth
-            if (!gotLiveData) {
-                const jitter = (Math.random() - 0.5) * 0.05;
-                lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
-                subOdometer.update(Math.floor(lastSimulatedSubs));
-            }
+            const jitter = (Math.random() - 0.5) * 0.05;
+            lastSimulatedSubs += (subsPerSecond * deltaSeconds) + jitter;
+            subOdometer.update(Math.floor(lastSimulatedSubs));
 
             // Sync a session point to chart every ~10 seconds
             if (now % 10000 < 2000) {
@@ -441,6 +419,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }, 2000);
+
+        // --- SLOW LOOP (60s): Try SCTools quietly, anchor simulation if it responds ---
+        const syncLive = async () => {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout max
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://ests.sctools.org/api/get/' + channelId)}`;
+                const res = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(timeout);
+                const wrapper = await res.json();
+                if (wrapper && wrapper.contents) {
+                    const json = JSON.parse(wrapper.contents);
+                    if (json && json.stats && json.stats.estCount) {
+                        lastSimulatedSubs = Math.floor(json.stats.estCount);
+                        if (json.stats.viewCount)  viewOdometer.update(json.stats.viewCount);
+                        if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
+                    }
+                }
+            } catch (e) { /* Silent — SCTools is down, simulation continues */ }
+        };
+        syncLive(); // Try immediately on load
+        const syncInterval = setInterval(syncLive, 60000); // Then every 60 seconds
+        // Store syncInterval reference so we can clear it on channel switch
+        window._syncInterval = syncInterval;
     };
 
 
