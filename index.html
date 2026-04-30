@@ -60,7 +60,7 @@
                 <div id="logoContainer" class="logo-icon-container">
                     <i class="fab fa-youtube"></i>
                 </div>
-                <h1>YT<span>Analytics</span> <span class="version-tag">v5.0</span></h1>
+                <h1>YT<span>Analytics</span> <span class="version-tag">v5.2</span></h1>
             </div>
             <p class="subtitle">Deep dive into channel performance and growth</p>
         </header>
@@ -225,10 +225,16 @@
                                     <button class="tab-btn active" data-type="subscribers">Subscribers</button>
                                     <button class="tab-btn" data-type="views">Views</button>
                                 </div>
-                                <button id="downloadBtn" class="action-btn">
-                                    <i class="fas fa-download"></i>
-                                    <span>Export</span>
-                                </button>
+                                <div class="chart-actions">
+                                    <button id="estBtn" class="action-btn secondary" title="Estimate true growth using views ratio">
+                                        <i class="fas fa-magic"></i>
+                                        <span>Est</span>
+                                    </button>
+                                    <button id="downloadBtn" class="action-btn">
+                                        <i class="fas fa-download"></i>
+                                        <span>Export</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <canvas id="growthChart"></canvas>
@@ -246,7 +252,15 @@
                     <h2><i class="fas fa-rocket"></i> Project Updates</h2>
                     <div class="changelog">
                         <div class="update-item">
-                            <div class="update-date">Latest - v5.0 (Live Restoration)</div>
+                            <div class="update-date">Latest - v5.2 (Growth Est)</div>
+                            <ul class="update-list">
+                                <li><strong>New:</strong> 'Est' button to estimate true sub growth using view-to-sub ratios.</li>
+                                <li><strong>Fix:</strong> Reveals high-res growth patterns behind YouTube's truncated stats.</li>
+                                <li><strong>Export:</strong> Download both original and estimated data as CSV.</li>
+                            </ul>
+                        </div>
+                        <div class="update-item">
+                            <div class="update-date">v5.1 (Smart Sync)</div>
                             <ul class="update-list">
                                 <li><strong>Fast:</strong> Live sync frequency increased to 5 seconds for real-time accuracy.</li>
                                 <li><strong>Stable:</strong> Maintained dual-loop engine to prevent console spam if APIs lag.</li>
@@ -654,6 +668,6 @@
         </div>
     </main>
 
-    <script src="script.js?v=5.0"></script>
+    <script src="script.js?v=5.2"></script>
 </body>
 </html>

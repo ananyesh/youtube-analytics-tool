@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.1 Initialized');
+    console.log('YT Analytics v5.2 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -175,6 +175,10 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(window._syncTimeout);
             window._syncTimeout = null;
         }
+        
+        isEstimating = false;
+        const estBtn = document.getElementById('estBtn');
+        if (estBtn) estBtn.classList.remove('active');
         
         suggestions.classList.add('hidden');
         showState('loading');
@@ -552,7 +556,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const getProcessedStats = () => {
         const granularity = granularitySelect.value;
-        return processChartStats(currentChannelData.stats, granularity);
+        let stats = currentChannelData.stats;
+        
+        if (isEstimating) {
+            stats = estimateGrowth(stats);
+        }
+        
+        return processChartStats(stats, granularity);
     };
 
     const updateChart = () => {
@@ -628,9 +638,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    let isEstimating = false;
+    let originalStats = null;
+
+    const estimateGrowth = (stats) => {
+        if (!stats || stats.length < 2) return stats;
+        
+        // Deep clone to avoid modifying source
+        const estStats = JSON.parse(JSON.stringify(stats));
+        
+        // Find indices where subscribers change
+        const changeIndices = [];
+        for (let i = 0; i < estStats.length; i++) {
+            if (i === 0 || i === estStats.length - 1 || estStats[i].subscribers !== estStats[i - 1].subscribers) {
+                changeIndices.push(i);
+            }
+        }
+
+        // Interpolate between changes based on views
+        for (let k = 0; k < changeIndices.length - 1; k++) {
+            const startIdx = changeIndices[k];
+            const endIdx = changeIndices[k+1];
+            
+            const startSub = estStats[startIdx].subscribers;
+            const endSub = estStats[endIdx].subscribers;
+            const startView = estStats[startIdx].views;
+            const endView = estStats[endIdx].views;
+            
+            const subDiff = endSub - startSub;
+            const viewDiff = endView - startView;
+            
+            if (viewDiff > 0 && subDiff !== 0) {
+                const ratio = subDiff / viewDiff;
+                for (let j = startIdx + 1; j < endIdx; j++) {
+                    const currentViewDiff = estStats[j].views - startView;
+                    estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * ratio));
+                }
+            } else if (subDiff === 0 && k > 0) {
+                // If subs are flat but views are moving, use the ratio from the previous segment
+                const prevStartIdx = changeIndices[k-1];
+                const prevEndIdx = changeIndices[k];
+                const prevRatio = (estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers) / (estStats[prevEndIdx].views - estStats[prevStartIdx].views || 1);
+                
+                if (prevRatio > 0) {
+                    for (let j = startIdx + 1; j <= endIdx; j++) {
+                        const currentViewDiff = estStats[j].views - startView;
+                        estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * prevRatio));
+                    }
+                }
+            }
+        }
+        
+        return estStats;
+    };
+
     const downloadCSV = () => {
         if (!currentChannelData) return;
-        const stats = getProcessedStats();
+        
+        // Use estimated stats if active
+        let sourceStats = currentChannelData.stats;
+        if (isEstimating) {
+            sourceStats = estimateGrowth(sourceStats);
+        }
+        
+        const stats = processChartStats(sourceStats, granularitySelect.value);
         const headers = ['Timestamp', 'Subscribers', 'Views', 'Videos'];
         const rows = stats.map(s => [
             new Date(s.recorded_at).toISOString().replace('T', ' ').substring(0, 19),
@@ -638,11 +709,12 @@ document.addEventListener('DOMContentLoaded', () => {
             s.views,
             s.videos
         ]);
+        
         let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `${currentChannelData.title}_analytics_${granularitySelect.value}.csv`);
+        link.setAttribute("download", `${currentChannelData.title}_${isEstimating ? 'estimated_' : ''}analytics_${granularitySelect.value}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -848,6 +920,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') handleSearch();
     });
     granularitySelect.addEventListener('change', updateChart);
+    const estBtn = document.getElementById('estBtn');
+    if (estBtn) {
+        estBtn.addEventListener('click', () => {
+            isEstimating = !isEstimating;
+            estBtn.classList.toggle('active', isEstimating);
+            updateChart();
+        });
+    }
     downloadBtn.addEventListener('click', downloadCSV);
 
     
