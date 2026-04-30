@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.2 Initialized');
+    console.log('YT Analytics v5.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -666,24 +666,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const endView = estStats[endIdx].views;
             
             const subDiff = endSub - startSub;
-            const viewDiff = endView - startView;
+            // Handle negative views (audits/deletions) as positive magnitude
+            const viewDiff = Math.abs(endView - startView); 
             
             if (viewDiff > 0 && subDiff !== 0) {
                 const ratio = subDiff / viewDiff;
                 for (let j = startIdx + 1; j < endIdx; j++) {
-                    const currentViewDiff = estStats[j].views - startView;
+                    const currentViewDiff = Math.abs(estStats[j].views - startView);
                     estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * ratio));
                 }
             } else if (subDiff === 0 && k > 0) {
                 // If subs are flat but views are moving, use the ratio from the previous segment
                 const prevStartIdx = changeIndices[k-1];
                 const prevEndIdx = changeIndices[k];
-                const prevRatio = (estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers) / (estStats[prevEndIdx].views - estStats[prevStartIdx].views || 1);
+                const prevSubDiff = estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers;
+                const prevViewDiff = Math.abs(estStats[prevEndIdx].views - estStats[prevStartIdx].views);
+                const prevRatio = prevSubDiff / (prevViewDiff || 1);
                 
-                if (prevRatio > 0) {
+                if (prevRatio !== 0) {
                     for (let j = startIdx + 1; j <= endIdx; j++) {
-                        const currentViewDiff = estStats[j].views - startView;
-                        estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * prevRatio));
+                        const currentViewDiff = Math.abs(estStats[j].views - startView);
+                        estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio)));
                     }
                 }
             }
