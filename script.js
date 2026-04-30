@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.3 Initialized');
+    console.log('YT Analytics v5.4 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -673,10 +673,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ratio = subDiff / viewDiff;
                 for (let j = startIdx + 1; j < endIdx; j++) {
                     const currentViewDiff = Math.abs(estStats[j].views - startView);
-                    estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * ratio));
+                    let estimated = Math.floor(startSub + (currentViewDiff * ratio));
+                    
+                    // Clamp to prevent spikes above/below the known step boundaries
+                    const min = Math.min(startSub, endSub);
+                    const max = Math.max(startSub, endSub);
+                    estStats[j].subscribers = Math.max(min, Math.min(max, estimated));
                 }
-            } else if (subDiff === 0 && k > 0) {
-                // If subs are flat but views are moving, use the ratio from the previous segment
+            } else if (subDiff === 0 && k > 0 && endIdx === estStats.length - 1) {
+                // ONLY apply prevRatio if this is the very last segment (live growth)
+                // Otherwise, historical flat periods should stay flat
                 const prevStartIdx = changeIndices[k-1];
                 const prevEndIdx = changeIndices[k];
                 const prevSubDiff = estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers;
