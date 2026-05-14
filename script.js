@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.5 Initialized');
+    console.log('YT Analytics v5.6 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -648,7 +648,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const estStats = JSON.parse(JSON.stringify(stats));
 
         // --- PHASE 1: VIEW SMOOTHENING ---
-        // Smooth views first because sub estimation depends on view growth
         const viewChanges = [];
         for (let i = 0; i < estStats.length; i++) {
             if (i === 0 || i === estStats.length - 1 || estStats[i].views !== estStats[i - 1].views) {
@@ -664,21 +663,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const startTime = new Date(estStats[startIdx].recorded_at).getTime();
             const endTime = new Date(estStats[endIdx].recorded_at).getTime();
 
-            if (endView === startView && k > 0) {
-                // If views are flat, project using previous velocity
-                const prevStart = viewChanges[k-1];
-                const prevEnd = viewChanges[k];
-                const prevTime = new Date(estStats[prevEnd].recorded_at).getTime() - new Date(estStats[prevStart].recorded_at).getTime();
-                const prevView = estStats[prevEnd].views - estStats[prevStart].views;
-                const velocity = prevView / (prevTime || 1);
-                
+            if (endView === startView) {
+                // Determine velocity: try previous segment, then next segment, then fallback
+                let velocity = 0;
+                if (k > 0) {
+                    const prevStart = viewChanges[k-1];
+                    const prevEnd = viewChanges[k];
+                    velocity = (estStats[prevEnd].views - estStats[prevStart].views) / 
+                               (new Date(estStats[prevEnd].recorded_at).getTime() - new Date(estStats[prevStart].recorded_at).getTime() || 1);
+                } else if (k < viewChanges.length - 2) {
+                    const nextStart = viewChanges[k+1];
+                    const nextEnd = viewChanges[k+2];
+                    velocity = (estStats[nextEnd].views - estStats[nextStart].views) / 
+                               (new Date(estStats[nextEnd].recorded_at).getTime() - new Date(estStats[nextStart].recorded_at).getTime() || 1);
+                }
+
                 if (velocity > 0) {
                     for (let j = startIdx + 1; j <= endIdx; j++) {
                         const deltaT = new Date(estStats[j].recorded_at).getTime() - startTime;
                         estStats[j].views = Math.floor(startView + (deltaT * velocity));
                     }
                 }
-            } else if (endView !== startView) {
+            } else {
                 // Linear interpolation for views
                 const totalTime = endTime - startTime;
                 const totalView = endView - startView;
@@ -703,23 +709,32 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const startSub = estStats[startIdx].subscribers;
             const endSub = estStats[endIdx].subscribers;
-            const startView = estStats[startIdx].views;
-            const endView = estStats[endIdx].views;
+            const startTime = new Date(estStats[startIdx].recorded_at).getTime();
+            const endTime = new Date(estStats[endIdx].recorded_at).getTime();
             
             const subDiff = endSub - startSub;
-            const viewDiff = Math.abs(endView - startView); 
+            const viewDiff = Math.abs(estStats[endIdx].views - estStats[startIdx].views); 
             
-            if (viewDiff > 0 && subDiff !== 0) {
-                const ratio = subDiff / viewDiff;
+            if (subDiff !== 0) {
+                // Preferred: Use views if they moved. Fallback: Use time.
+                const hasViewGrowth = viewDiff > 0;
+                const ratio = hasViewGrowth ? (subDiff / viewDiff) : (subDiff / (endTime - startTime || 1));
+                
                 for (let j = startIdx + 1; j < endIdx; j++) {
-                    const currentViewDiff = Math.abs(estStats[j].views - startView);
-                    let estimated = Math.floor(startSub + (currentViewDiff * ratio));
+                    let progress;
+                    if (hasViewGrowth) {
+                        progress = Math.abs(estStats[j].views - estStats[startIdx].views);
+                    } else {
+                        progress = new Date(estStats[j].recorded_at).getTime() - startTime;
+                    }
+                    
+                    let estimated = Math.floor(startSub + (progress * ratio));
                     const min = Math.min(startSub, endSub);
                     const max = Math.max(startSub, endSub);
                     estStats[j].subscribers = Math.max(min, Math.min(max, estimated));
                 }
-            } else if (subDiff === 0 && k > 0 && endIdx === estStats.length - 1) {
-                // Final projection
+            } else if (k > 0 && endIdx === estStats.length - 1) {
+                // Final projection for live growth
                 const prevStartIdx = subChanges[k-1];
                 const prevEndIdx = subChanges[k];
                 const prevSubDiff = estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers;
@@ -728,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (prevRatio !== 0) {
                     for (let j = startIdx + 1; j <= endIdx; j++) {
-                        const currentViewDiff = Math.abs(estStats[j].views - startView);
+                        const currentViewDiff = Math.abs(estStats[j].views - estStats[startIdx].views);
                         estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio)));
                     }
                 }
