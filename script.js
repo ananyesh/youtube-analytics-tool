@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.2 Initialized');
+    console.log('YT Analytics v6.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -109,44 +109,59 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     // --- Search Suggestions ---
-    const searchCache = new Map();
-
     // --- Turbo-Racing Proxy Engine (v6.2) ---
+    const searchCache = JSON.parse(localStorage.getItem('yt_search_cache') || '{}');
+    const saveToCache = (key, val) => {
+        searchCache[key] = val;
+        // Keep cache small
+        const keys = Object.keys(searchCache);
+        if (keys.length > 50) delete searchCache[keys[0]];
+        localStorage.setItem('yt_search_cache', JSON.stringify(searchCache));
+    };
+
     const fetchProxied = async (url) => {
         const proxies = [
             (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}&t=${Date.now()}`,
-            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}&t=${Date.now()}`,
             (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
             (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
-            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
+            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
         ];
 
         const tryProxy = async (getProxyUrl) => {
-            const pUrl = getProxyUrl(url);
-            const res = await fetch(pUrl);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const text = await res.text();
-            let data = JSON.parse(text);
-            
-            // Unpack AllOrigins
-            if (data && typeof data === 'object' && data.contents) {
-                data = JSON.parse(data.contents);
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 2500); // HARD 2.5s TIMEOUT
+
+            try {
+                const pUrl = getProxyUrl(url);
+                const res = await fetch(pUrl, { signal: controller.signal });
+                clearTimeout(id);
+                
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const text = await res.text();
+                let data = JSON.parse(text);
+                
+                if (data && typeof data === 'object' && data.contents) {
+                    data = JSON.parse(data.contents);
+                }
+                
+                if (!data || (typeof data !== 'object')) throw new Error("Invalid");
+                return data;
+            } catch (e) {
+                clearTimeout(id);
+                throw e;
             }
-            
-            // Validation: Ensure it looks like YT data (results or stats)
-            if (!data || (typeof data !== 'object')) throw new Error("Malformed data");
-            return data;
         };
 
-        // RACE: Try first 2 immediately. If they take > 2.5s, try the rest.
+        // RACE: Try first 3 immediately (Burst Mode)
         try {
-            return await Promise.any(proxies.slice(0, 2).map(p => tryProxy(p)));
+            return await Promise.any(proxies.slice(0, 3).map(p => tryProxy(p)));
         } catch (e) {
-            // Primary race failed or timed out, try ALL remaining in parallel
+            // Backup Burst
             try {
-                return await Promise.any(proxies.slice(2).map(p => tryProxy(p)));
+                return await Promise.any(proxies.slice(3).map(p => tryProxy(p)));
             } catch (err) {
-                throw new Error("All proxies failed or timed out.");
+                throw new Error("Connection timed out. Please try again in a moment.");
             }
         }
     };
@@ -160,8 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (searchCache.has(query)) {
-            renderSuggestions(searchCache.get(query));
+        if (searchCache[query]) {
+            renderSuggestions(searchCache[query]);
             return;
         }
 
@@ -170,13 +185,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
                 if (data && data.results && data.results.length > 0) {
                     const sliced = data.results.slice(0, 5);
-                    searchCache.set(query, sliced);
+                    saveToCache(query, sliced);
                     renderSuggestions(sliced);
                 } else {
                     suggestions.classList.add('hidden');
                 }
-            } catch (e) { console.error('Suggestion fetch failed', e); }
-        }, 250); // Faster debounce for racing engine
+            } catch (e) { console.warn('Suggestion fetch failed'); }
+        }, 250);
     });
 
     const renderSuggestions = (results) => {
