@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.0 Initialized');
+    console.log('YT Analytics v6.1 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -112,11 +112,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchCache = new Map();
 
     // --- Multi-Proxy Fetch Engine ---
+    // --- High-Availability Proxy Engine ---
     const fetchProxied = async (url) => {
         const proxies = [
             (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}&t=${Date.now()}`,
-            (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-            (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
+            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}&t=${Date.now()}`,
+            (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+            (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
+            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
         ];
 
         let lastError = null;
@@ -126,18 +129,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(pUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 
-                const data = await res.json();
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error("Invalid JSON response");
+                }
                 
-                // AllOrigins wraps in .contents
+                // AllOrigins JSON wraps in .contents
                 if (data && typeof data === 'object' && data.contents) {
-                    return JSON.parse(data.contents);
+                    try {
+                        return JSON.parse(data.contents);
+                    } catch (e) {
+                        return data.contents; // Might be raw text
+                    }
                 }
                 
                 // Other proxies return the data directly
                 return data;
             } catch (e) {
                 lastError = e;
-                continue; // Try next proxy
+                console.warn(`Proxy attempt failed: ${e.message}. Trying next...`);
+                continue; 
             }
         }
         throw lastError || new Error('All proxies failed');
