@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.5 Initialized');
+    console.log('YT Analytics v6.6 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -795,12 +795,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 2. Calculate local hourly changes based on view velocity vs global average
                 let currentTotal = startSub;
                 const rawGains = [];
+                const avgViewVel = (estStats[estStats.length-1].views - estStats[0].views) / (estStats.length || 1);
+
                 for (let j = startIdx + 1; j <= endIdx; j++) {
                     const localViewVel = estStats[j].views - estStats[j-1].views;
-                    const avgViewVel = (estStats[estStats.length-1].views - estStats[0].views) / (estStats.length || 1);
+                    const deviation = localViewVel - avgViewVel;
                     
-                    // The "Differential Gain" formula
-                    const gain = (localViewVel - avgViewVel) * scale;
+                    // SPIKE SUPPRESSION: Use non-linear scaling (square root) for extreme deviations
+                    // This prevents unprivated videos from creating huge unrealistic sub jumps
+                    const sign = deviation >= 0 ? 1 : -1;
+                    const suppressedDev = sign * Math.pow(Math.abs(deviation), 0.7); // 0.7 power compresses spikes
+                    
+                    const gain = suppressedDev * scale;
                     rawGains.push(gain);
                     currentTotal += gain;
                 }
