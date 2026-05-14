@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.8 Initialized');
+    console.log('YT Analytics v6.9 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -841,19 +841,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 estStats[j].subscribers = Math.floor(Math.max(min, Math.min(max, rollingSub)));
             }
         }
-                // Final projection for live growth
-                const prevStartIdx = subChanges[k-1];
-                const prevEndIdx = subChanges[k];
-                const prevSubDiff = estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers;
-                const prevViewDiff = Math.abs(estStats[prevEndIdx].views - estStats[prevStartIdx].views);
-                const prevRatio = prevSubDiff / (prevViewDiff || 1);
-                
-                if (prevRatio !== 0) {
-                    for (let j = startIdx + 1; j <= endIdx; j++) {
-                        const currentViewDiff = Math.abs(estStats[j].views - estStats[startIdx].views);
-                        estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio)));
-                    }
-                }
+
+        // Final Live Projection (from the last known point to the end)
+        const lastChange = subChanges[subChanges.length - 1];
+        if (lastChange.idx < estStats.length - 1) {
+            const startIdx = lastChange.idx;
+            const endIdx = estStats.length - 1;
+            const startSub = lastChange.target;
+            
+            // Use the ratio from the last significant segment
+            const prevStartIdx = subChanges.length > 1 ? subChanges[subChanges.length - 2].idx : 0;
+            const prevEndIdx = lastChange.idx;
+            const prevSubDiff = estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers;
+            const prevViewDiff = Math.abs(estStats[prevEndIdx].views - estStats[prevStartIdx].views);
+            const prevRatio = prevSubDiff / (prevViewDiff || 1);
+
+            for (let j = startIdx + 1; j <= endIdx; j++) {
+                const currentViewDiff = Math.abs(estStats[j].views - estStats[startIdx].views);
+                estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio || 0.001)));
             }
         }
         
