@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.3 Initialized');
+    console.log('YT Analytics v6.4 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -781,26 +781,37 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const subDiff = endSub - startSub;
             
-            if (subDiff !== 0) {
+            if (subDiff !== 0 || true) { // Always estimate even if subDiff is 0 to get "wobble"
                 const realViewDiff = estStats[endIdx].views - estStats[startIdx].views;
                 const absViewDiff = Math.abs(realViewDiff);
+                const duration = endTime - startTime || 1;
                 
                 // Use views only if they are growing and the ratio is realistic
-                // If views are decreasing (audit) or ratio is crazy (> 2 subs per view), use time
                 const useViews = realViewDiff > 0 && (subDiff / absViewDiff) < 2;
-                const ratio = useViews ? (subDiff / absViewDiff) : (subDiff / (endTime - startTime || 1));
                 
+                // Sensitivity for the "wobble": Use local ratio if possible, otherwise global fallback
+                const sensitivity = useViews ? (subDiff / absViewDiff) : (globalVelocity * 0.01); // 1% of views as subs fallback
+
                 for (let j = startIdx + 1; j < endIdx; j++) {
-                    let progress;
-                    if (useViews) {
-                        progress = Math.abs(estStats[j].views - estStats[startIdx].views);
-                    } else {
-                        progress = new Date(estStats[j].recorded_at).getTime() - startTime;
-                    }
+                    // 1. Base Linear Progress (Time-based)
+                    const progressT = (new Date(estStats[j].recorded_at).getTime() - startTime) / duration;
+                    const baseSub = startSub + (progressT * subDiff);
                     
-                    let estimated = Math.floor(startSub + (progress * ratio));
-                    const min = Math.min(startSub, endSub);
-                    const max = Math.max(startSub, endSub);
+                    // 2. View-driven "Wobble" (Deviation from average velocity)
+                    // We compare local velocity to the average velocity of THIS segment
+                    const avgSegViewVel = realViewDiff / (duration / (1000 * 60 * 60) || 1);
+                    const localViewVel = (estStats[j].views - estStats[j-1].views); // Views in the last hour
+                    
+                    // The wobble makes it look realistic even when stagnant
+                    const wobble = (localViewVel - (realViewDiff / (endIdx - startIdx))) * (sensitivity || 1);
+                    
+                    let estimated = Math.floor(baseSub + wobble);
+                    
+                    // Clamping to known range (with small 5% overlap for realistic peaks/valleys)
+                    const buffer = Math.abs(subDiff) * 0.05;
+                    const min = Math.min(startSub, endSub) - buffer;
+                    const max = Math.max(startSub, endSub) + buffer;
+                    
                     estStats[j].subscribers = Math.max(min, Math.min(max, estimated));
                 }
             } else if (k > 0 && endIdx === estStats.length - 1) {
