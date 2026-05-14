@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.6 Initialized');
+    console.log('YT Analytics v5.7 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -498,8 +498,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedKeys = Object.keys(groups).sort();
         // SAFETY GATE: If we already have a massive dataset (>5000 points), skip gap-filling to prevent crash
         if (sortedKeys.length > 1 && sortedKeys.length < 5000 && granularity !== 'yearly') {
-            const MAX_GAP_HOURS = 48; // Max hours to fill in one go for hourly
-            const MAX_GAP_DAYS = 31;  // Max days to fill for daily/weekly
+            // When estimating, we allow much larger gaps to ensure continuity
+            const MAX_GAP_HOURS = isEstimating ? 500 : 48; 
+            const MAX_GAP_DAYS = isEstimating ? 365 : 31;
             
             for (let i = 0; i < sortedKeys.length - 1; i++) {
                 const start = new Date(groups[sortedKeys[i]].recorded_at);
@@ -655,6 +656,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Global fallback velocity for dead segments
+        const totalV = estStats[estStats.length - 1].views - estStats[0].views;
+        const totalT = new Date(estStats[estStats.length - 1].recorded_at).getTime() - new Date(estStats[0].recorded_at).getTime();
+        const globalVelocity = totalV / (totalT || 1);
+
         for (let k = 0; k < viewChanges.length - 1; k++) {
             const startIdx = viewChanges[k];
             const endIdx = viewChanges[k+1];
@@ -664,7 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const endTime = new Date(estStats[endIdx].recorded_at).getTime();
 
             if (endView === startView) {
-                // Determine velocity: try previous segment, then next segment, then fallback
+                // Determine velocity: try previous segment, then next segment, then global fallback
                 let velocity = 0;
                 if (k > 0) {
                     const prevStart = viewChanges[k-1];
@@ -677,6 +683,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     velocity = (estStats[nextEnd].views - estStats[nextStart].views) / 
                                (new Date(estStats[nextEnd].recorded_at).getTime() - new Date(estStats[nextStart].recorded_at).getTime() || 1);
                 }
+                
+                // Final fallback if local neighbors are dead
+                if (velocity <= 0) velocity = globalVelocity;
 
                 if (velocity > 0) {
                     for (let j = startIdx + 1; j <= endIdx; j++) {
