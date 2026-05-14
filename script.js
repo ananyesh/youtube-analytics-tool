@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v7.0 Initialized');
+    console.log('YT Analytics v7.1 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -860,8 +860,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentViewDiff = Math.abs(estStats[j].views - estStats[startIdx].views);
                 estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio || 0.001)));
             }
-        }
-        
         }
 
         // --- PHASE 3: GAUSSIAN SMOOTHING ---
