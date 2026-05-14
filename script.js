@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v7.1 Initialized');
+    console.log('YT Analytics v7.2 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -770,13 +770,33 @@ document.addEventListener('DOMContentLoaded', () => {
             if (val >= 100000) return 1000;      
             return 1;
         };
-
-        // Pre-process targets to handle boundary crawling
-        const subChanges = [];
+        let subChangesRaw = [];
         for (let i = 0; i < estStats.length; i++) {
             if (i === 0 || i === estStats.length - 1 || estStats[i].subscribers !== estStats[i - 1].subscribers) {
-                subChanges.push({ idx: i, raw: estStats[i].subscribers });
+                subChangesRaw.push({ idx: i, raw: estStats[i].subscribers });
             }
+        }
+
+        // --- SUBSCRIBER AUDIT SHIELD ---
+        // Filter out "reverting spikes" (A -> B -> A anomalies)
+        const subChanges = [];
+        for (let i = 0; i < subChangesRaw.length; i++) {
+            const current = subChangesRaw[i];
+            const prev = i > 0 ? subChangesRaw[i-1] : null;
+            const next = i < subChangesRaw.length - 1 ? subChangesRaw[i+1] : null;
+
+            if (prev && next) {
+                const res = getTruncationRes(current.raw);
+                const jumpPrev = Math.abs(current.raw - prev.raw);
+                const jumpNext = Math.abs(next.raw - current.raw);
+                const netJump = Math.abs(next.raw - prev.raw);
+                
+                // If it's a massive jump that immediately reverts, it's an audit/error
+                if (jumpPrev > (res * 0.5) && jumpNext > (res * 0.5) && netJump < (res * 0.1)) {
+                    continue; // Discard the spike
+                }
+            }
+            subChanges.push(current);
         }
 
         // Apply "Boundary Crawl" to stagnant periods
