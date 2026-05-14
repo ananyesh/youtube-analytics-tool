@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.8 Initialized');
+    console.log('YT Analytics v5.9 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -109,8 +109,20 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     // --- Search Suggestions ---
+    const searchCache = new Map();
+
+    const fetchProxied = async (url) => {
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&t=${Date.now()}`;
+        const res = await fetch(proxyUrl);
+        const data = await res.json();
+        if (data && data.contents) {
+            return JSON.parse(data.contents);
+        }
+        throw new Error('Proxy failed to fetch content');
+    };
+
     channelInput.addEventListener('input', () => {
-        const query = channelInput.value.trim();
+        const query = channelInput.value.trim().toLowerCase();
         clearTimeout(suggestionTimeout);
         
         if (query.length < 2) {
@@ -118,18 +130,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (searchCache.has(query)) {
+            renderSuggestions(searchCache.get(query));
+            return;
+        }
+
         suggestionTimeout = setTimeout(async () => {
             try {
-                const res = await fetch(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
-                const data = await res.json();
-                
+                const data = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
                 if (data && data.results && data.results.length > 0) {
-                    renderSuggestions(data.results.slice(0, 5));
+                    const sliced = data.results.slice(0, 5);
+                    searchCache.set(query, sliced);
+                    renderSuggestions(sliced);
                 } else {
                     suggestions.classList.add('hidden');
                 }
             } catch (e) { console.error('Suggestion fetch failed', e); }
-        }, 300);
+        }, 400); // Slightly increased debounce
     });
 
     const renderSuggestions = (results) => {
@@ -188,8 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .replace(/https?:\/\/(www\.)?youtube\.com\/(channel\/|user\/|c\/|@)?/g, '')
                 .replace(/\/$/g, '');
 
-            const searchRes = await fetch(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(cleanQuery)}`);
-            const searchData = await searchRes.json();
+            const searchData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(cleanQuery)}`);
 
             if (!searchData || !searchData.results || searchData.results.length === 0) {
                 throw new Error('No channel found matching your input.');
@@ -199,8 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const today = new Date().toISOString().split('T')[0];
             const fromDate = '2005-04-23'; 
             
-            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
-            const statsData = await statsRes.json();
+            const statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
 
             if (!statsData || statsData.length === 0) {
                 throw new Error('Could not retrieve stats for this channel.');
@@ -249,8 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         compSuggestionTimeout = setTimeout(async () => {
             try {
-                const res = await fetch(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
-                const data = await res.json();
+                const data = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
                 
                 if (data && data.results && data.results.length > 0) {
                     renderCompSuggestions(data.results.slice(0, 5));
@@ -258,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     compareSuggestions.classList.add('hidden');
                 }
             } catch (e) { console.error('Suggestion fetch failed', e); }
-        }, 300);
+        }, 400);
     });
 
     const renderCompSuggestions = (results) => {
@@ -289,8 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const today = new Date().toISOString().split('T')[0];
-            const statsRes = await fetch(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
-            const statsData = await statsRes.json();
+            const statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
             
             if (!statsData || statsData.length === 0) throw new Error('Stats not found');
             
