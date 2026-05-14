@@ -721,6 +721,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const startTime = new Date(estStats[startIdx].recorded_at).getTime();
             const endTime = new Date(estStats[endIdx].recorded_at).getTime();
             
+            const subDiff = endSub - startSub;
+            
             if (subDiff !== 0) {
                 const realViewDiff = estStats[endIdx].views - estStats[startIdx].views;
                 const absViewDiff = Math.abs(realViewDiff);
