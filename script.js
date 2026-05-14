@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.7 Initialized');
+    console.log('YT Analytics v5.8 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -721,17 +721,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const startTime = new Date(estStats[startIdx].recorded_at).getTime();
             const endTime = new Date(estStats[endIdx].recorded_at).getTime();
             
-            const subDiff = endSub - startSub;
-            const viewDiff = Math.abs(estStats[endIdx].views - estStats[startIdx].views); 
-            
             if (subDiff !== 0) {
-                // Preferred: Use views if they moved. Fallback: Use time.
-                const hasViewGrowth = viewDiff > 0;
-                const ratio = hasViewGrowth ? (subDiff / viewDiff) : (subDiff / (endTime - startTime || 1));
+                const realViewDiff = estStats[endIdx].views - estStats[startIdx].views;
+                const absViewDiff = Math.abs(realViewDiff);
+                
+                // Use views only if they are growing and the ratio is realistic
+                // If views are decreasing (audit) or ratio is crazy (> 2 subs per view), use time
+                const useViews = realViewDiff > 0 && (subDiff / absViewDiff) < 2;
+                const ratio = useViews ? (subDiff / absViewDiff) : (subDiff / (endTime - startTime || 1));
                 
                 for (let j = startIdx + 1; j < endIdx; j++) {
                     let progress;
-                    if (hasViewGrowth) {
+                    if (useViews) {
                         progress = Math.abs(estStats[j].views - estStats[startIdx].views);
                     } else {
                         progress = new Date(estStats[j].recorded_at).getTime() - startTime;
