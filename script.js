@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.6 Initialized');
+    console.log('YT Analytics v6.7 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -763,6 +763,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // --- PHASE 2: SUBSCRIBER ESTIMATION ---
+        const getTruncationRes = (val) => {
+            if (val >= 100000000) return 1000000; // 1M resolution for 100M+
+            if (val >= 10000000) return 100000;   // 100k resolution for 10M+
+            if (val >= 1000000) return 10000;    // 10k resolution for 1M+
+            if (val >= 100000) return 1000;      // 1k resolution for 100k+
+            return 1;
+        };
+
         const subChanges = [];
         for (let i = 0; i < estStats.length; i++) {
             if (i === 0 || i === estStats.length - 1 || estStats[i].subscribers !== estStats[i - 1].subscribers) {
@@ -774,8 +782,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const startIdx = subChanges[k];
             const endIdx = subChanges[k+1];
             
-            const startSub = estStats[startIdx].subscribers;
-            const endSub = estStats[endIdx].subscribers;
+            const startSubRaw = estStats[startIdx].subscribers;
+            const endSubRaw = estStats[endIdx].subscribers;
+            
+            // Apply Truncation Boundary Logic
+            const res = getTruncationRes(startSubRaw);
+            let startSub = startSubRaw;
+            let endSub = endSubRaw;
+
+            if (endSubRaw < startSubRaw) {
+                // LOSS: If it drops from 23.6M to 23.5M, we hit the ceiling of the new range (23,599,999)
+                endSub = endSubRaw + (res - 1);
+            } else if (endSubRaw > startSubRaw) {
+                // GROWTH: Standard floor-to-floor is fine as it's the conservative estimate
+                endSub = endSubRaw;
+            }
+            
             const startTime = new Date(estStats[startIdx].recorded_at).getTime();
             const endTime = new Date(estStats[endIdx].recorded_at).getTime();
             
