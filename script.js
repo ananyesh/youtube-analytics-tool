@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.1 Initialized');
+    console.log('YT Analytics v6.2 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -111,8 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Search Suggestions ---
     const searchCache = new Map();
 
-    // --- Multi-Proxy Fetch Engine ---
-    // --- High-Availability Proxy Engine ---
+    // --- Turbo-Racing Proxy Engine (v6.2) ---
     const fetchProxied = async (url) => {
         const proxies = [
             (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}&t=${Date.now()}`,
@@ -122,39 +121,34 @@ document.addEventListener('DOMContentLoaded', () => {
             (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`
         ];
 
-        let lastError = null;
-        for (const getProxyUrl of proxies) {
+        const tryProxy = async (getProxyUrl) => {
+            const pUrl = getProxyUrl(url);
+            const res = await fetch(pUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            let data = JSON.parse(text);
+            
+            // Unpack AllOrigins
+            if (data && typeof data === 'object' && data.contents) {
+                data = JSON.parse(data.contents);
+            }
+            
+            // Validation: Ensure it looks like YT data (results or stats)
+            if (!data || (typeof data !== 'object')) throw new Error("Malformed data");
+            return data;
+        };
+
+        // RACE: Try first 2 immediately. If they take > 2.5s, try the rest.
+        try {
+            return await Promise.any(proxies.slice(0, 2).map(p => tryProxy(p)));
+        } catch (e) {
+            // Primary race failed or timed out, try ALL remaining in parallel
             try {
-                const pUrl = getProxyUrl(url);
-                const res = await fetch(pUrl);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                
-                const text = await res.text();
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    throw new Error("Invalid JSON response");
-                }
-                
-                // AllOrigins JSON wraps in .contents
-                if (data && typeof data === 'object' && data.contents) {
-                    try {
-                        return JSON.parse(data.contents);
-                    } catch (e) {
-                        return data.contents; // Might be raw text
-                    }
-                }
-                
-                // Other proxies return the data directly
-                return data;
-            } catch (e) {
-                lastError = e;
-                console.warn(`Proxy attempt failed: ${e.message}. Trying next...`);
-                continue; 
+                return await Promise.any(proxies.slice(2).map(p => tryProxy(p)));
+            } catch (err) {
+                throw new Error("All proxies failed or timed out.");
             }
         }
-        throw lastError || new Error('All proxies failed');
     };
 
     channelInput.addEventListener('input', () => {
@@ -182,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     suggestions.classList.add('hidden');
                 }
             } catch (e) { console.error('Suggestion fetch failed', e); }
-        }, 400); // Slightly increased debounce
+        }, 250); // Faster debounce for racing engine
     });
 
     const renderSuggestions = (results) => {
