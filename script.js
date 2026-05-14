@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v5.9 Initialized');
+    console.log('YT Analytics v6.0 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -111,14 +111,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Search Suggestions ---
     const searchCache = new Map();
 
+    // --- Multi-Proxy Fetch Engine ---
     const fetchProxied = async (url) => {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&t=${Date.now()}`;
-        const res = await fetch(proxyUrl);
-        const data = await res.json();
-        if (data && data.contents) {
-            return JSON.parse(data.contents);
+        const proxies = [
+            (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}&t=${Date.now()}`,
+            (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+            (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
+        ];
+
+        let lastError = null;
+        for (const getProxyUrl of proxies) {
+            try {
+                const pUrl = getProxyUrl(url);
+                const res = await fetch(pUrl);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                
+                const data = await res.json();
+                
+                // AllOrigins wraps in .contents
+                if (data && typeof data === 'object' && data.contents) {
+                    return JSON.parse(data.contents);
+                }
+                
+                // Other proxies return the data directly
+                return data;
+            } catch (e) {
+                lastError = e;
+                continue; // Try next proxy
+            }
         }
-        throw new Error('Proxy failed to fetch content');
+        throw lastError || new Error('All proxies failed');
     };
 
     channelInput.addEventListener('input', () => {
