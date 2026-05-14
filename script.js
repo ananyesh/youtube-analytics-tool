@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.4 Initialized');
+    console.log('YT Analytics v6.5 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -781,38 +781,44 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const subDiff = endSub - startSub;
             
-            if (subDiff !== 0 || true) { // Always estimate even if subDiff is 0 to get "wobble"
+            if (subDiff !== 0 || true) {
                 const realViewDiff = estStats[endIdx].views - estStats[startIdx].views;
-                const absViewDiff = Math.abs(realViewDiff);
                 const duration = endTime - startTime || 1;
+                const hours = (endIdx - startIdx);
                 
-                // Use views only if they are growing and the ratio is realistic
-                const useViews = realViewDiff > 0 && (subDiff / absViewDiff) < 2;
-                
-                // Sensitivity for the "wobble": Use local ratio if possible, otherwise global fallback
-                const sensitivity = useViews ? (subDiff / absViewDiff) : (globalVelocity * 0.01); // 1% of views as subs fallback
+                // 1. Calculate the "Target Growth Rate" (Scale) 
+                // We use the channel's global baseline ratio to determine how much views impact subs
+                const globalRatio = (estStats[estStats.length-1].subscribers - estStats[0].subscribers) / 
+                                    (estStats[estStats.length-1].views - estStats[0].views || 1);
+                const scale = Math.abs(globalRatio) > 0 ? globalRatio : 0.001; // Fallback to 1 sub per 1k views
 
+                // 2. Calculate local hourly changes based on view velocity vs global average
+                let currentTotal = startSub;
+                const rawGains = [];
+                for (let j = startIdx + 1; j <= endIdx; j++) {
+                    const localViewVel = estStats[j].views - estStats[j-1].views;
+                    const avgViewVel = (estStats[estStats.length-1].views - estStats[0].views) / (estStats.length || 1);
+                    
+                    // The "Differential Gain" formula
+                    const gain = (localViewVel - avgViewVel) * scale;
+                    rawGains.push(gain);
+                    currentTotal += gain;
+                }
+
+                // 3. Error Correction: We must hit 'endSub' at 'endIdx'
+                const error = endSub - currentTotal;
+                const correctionPerHour = error / (hours || 1);
+
+                let rollingSub = startSub;
                 for (let j = startIdx + 1; j < endIdx; j++) {
-                    // 1. Base Linear Progress (Time-based)
-                    const progressT = (new Date(estStats[j].recorded_at).getTime() - startTime) / duration;
-                    const baseSub = startSub + (progressT * subDiff);
+                    rollingSub += rawGains[j - (startIdx + 1)] + correctionPerHour;
                     
-                    // 2. View-driven "Wobble" (Deviation from average velocity)
-                    // We compare local velocity to the average velocity of THIS segment
-                    const avgSegViewVel = realViewDiff / (duration / (1000 * 60 * 60) || 1);
-                    const localViewVel = (estStats[j].views - estStats[j-1].views); // Views in the last hour
-                    
-                    // The wobble makes it look realistic even when stagnant
-                    const wobble = (localViewVel - (realViewDiff / (endIdx - startIdx))) * (sensitivity || 1);
-                    
-                    let estimated = Math.floor(baseSub + wobble);
-                    
-                    // Clamping to known range (with small 5% overlap for realistic peaks/valleys)
-                    const buffer = Math.abs(subDiff) * 0.05;
+                    // Safe Clamping: Allow 2% "over-swing" for realism
+                    const buffer = Math.abs(subDiff || 1000) * 0.02;
                     const min = Math.min(startSub, endSub) - buffer;
                     const max = Math.max(startSub, endSub) + buffer;
                     
-                    estStats[j].subscribers = Math.max(min, Math.min(max, estimated));
+                    estStats[j].subscribers = Math.floor(Math.max(min, Math.min(max, rollingSub)));
                 }
             } else if (k > 0 && endIdx === estStats.length - 1) {
                 // Final projection for live growth
