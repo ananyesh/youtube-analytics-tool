@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.7 Initialized');
+    console.log('YT Analytics v6.8 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -764,91 +764,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- PHASE 2: SUBSCRIBER ESTIMATION ---
         const getTruncationRes = (val) => {
-            if (val >= 100000000) return 1000000; // 1M resolution for 100M+
-            if (val >= 10000000) return 100000;   // 100k resolution for 10M+
-            if (val >= 1000000) return 10000;    // 10k resolution for 1M+
-            if (val >= 100000) return 1000;      // 1k resolution for 100k+
+            if (val >= 100000000) return 1000000; 
+            if (val >= 10000000) return 100000;   
+            if (val >= 1000000) return 10000;    
+            if (val >= 100000) return 1000;      
             return 1;
         };
 
+        // Pre-process targets to handle boundary crawling
         const subChanges = [];
         for (let i = 0; i < estStats.length; i++) {
             if (i === 0 || i === estStats.length - 1 || estStats[i].subscribers !== estStats[i - 1].subscribers) {
-                subChanges.push(i);
+                subChanges.push({ idx: i, raw: estStats[i].subscribers });
+            }
+        }
+
+        // Apply "Boundary Crawl" to stagnant periods
+        for (let k = 0; k < subChanges.length; k++) {
+            const current = subChanges[k];
+            const prev = k > 0 ? subChanges[k-1] : null;
+            const next = k < subChanges.length - 1 ? subChanges[k+1] : null;
+            const res = getTruncationRes(current.raw);
+
+            if (next && next.raw < current.raw) {
+                // Pre-Drop: Start moving towards the boundary
+                current.target = current.raw + (res * 0.2); // Start slightly above floor
+            } else if (prev && prev.raw > current.raw) {
+                // Post-Drop: Just crossed the boundary
+                current.target = current.raw + (res - 1); 
+            } else if (next && next.raw > current.raw) {
+                // Pre-Growth: Crawl towards ceiling
+                current.target = current.raw + (res * 0.8);
+            } else {
+                current.target = current.raw;
             }
         }
 
         for (let k = 0; k < subChanges.length - 1; k++) {
-            const startIdx = subChanges[k];
-            const endIdx = subChanges[k+1];
-            
-            const startSubRaw = estStats[startIdx].subscribers;
-            const endSubRaw = estStats[endIdx].subscribers;
-            
-            // Apply Truncation Boundary Logic
-            const res = getTruncationRes(startSubRaw);
-            let startSub = startSubRaw;
-            let endSub = endSubRaw;
-
-            if (endSubRaw < startSubRaw) {
-                // LOSS: If it drops from 23.6M to 23.5M, we hit the ceiling of the new range (23,599,999)
-                endSub = endSubRaw + (res - 1);
-            } else if (endSubRaw > startSubRaw) {
-                // GROWTH: Standard floor-to-floor is fine as it's the conservative estimate
-                endSub = endSubRaw;
-            }
+            const startIdx = subChanges[k].idx;
+            const endIdx = subChanges[k+1].idx;
+            const startSub = subChanges[k].target;
+            const endSub = subChanges[k+1].target;
             
             const startTime = new Date(estStats[startIdx].recorded_at).getTime();
             const endTime = new Date(estStats[endIdx].recorded_at).getTime();
-            
             const subDiff = endSub - startSub;
+            const hours = (endIdx - startIdx);
             
-            if (subDiff !== 0 || true) {
-                const realViewDiff = estStats[endIdx].views - estStats[startIdx].views;
-                const duration = endTime - startTime || 1;
-                const hours = (endIdx - startIdx);
-                
-                // 1. Calculate the "Target Growth Rate" (Scale) 
-                // We use the channel's global baseline ratio to determine how much views impact subs
-                const globalRatio = (estStats[estStats.length-1].subscribers - estStats[0].subscribers) / 
-                                    (estStats[estStats.length-1].views - estStats[0].views || 1);
-                const scale = Math.abs(globalRatio) > 0 ? globalRatio : 0.001; // Fallback to 1 sub per 1k views
+            const globalRatio = (estStats[estStats.length-1].subscribers - estStats[0].subscribers) / 
+                                (estStats[estStats.length-1].views - estStats[0].views || 1);
+            const scale = Math.abs(globalRatio) > 0 ? globalRatio : 0.001;
 
-                // 2. Calculate local hourly changes based on view velocity vs global average
-                let currentTotal = startSub;
-                const rawGains = [];
-                const avgViewVel = (estStats[estStats.length-1].views - estStats[0].views) / (estStats.length || 1);
+            let currentTotal = startSub;
+            const rawGains = [];
+            const avgViewVel = (estStats[estStats.length-1].views - estStats[0].views) / (estStats.length || 1);
 
-                for (let j = startIdx + 1; j <= endIdx; j++) {
-                    const localViewVel = estStats[j].views - estStats[j-1].views;
-                    const deviation = localViewVel - avgViewVel;
-                    
-                    // SPIKE SUPPRESSION: Use non-linear scaling (square root) for extreme deviations
-                    // This prevents unprivated videos from creating huge unrealistic sub jumps
-                    const sign = deviation >= 0 ? 1 : -1;
-                    const suppressedDev = sign * Math.pow(Math.abs(deviation), 0.7); // 0.7 power compresses spikes
-                    
-                    const gain = suppressedDev * scale;
-                    rawGains.push(gain);
-                    currentTotal += gain;
-                }
+            for (let j = startIdx + 1; j <= endIdx; j++) {
+                const localViewVel = estStats[j].views - estStats[j-1].views;
+                const deviation = localViewVel - avgViewVel;
+                const sign = deviation >= 0 ? 1 : -1;
+                const suppressedDev = sign * Math.pow(Math.abs(deviation), 0.7);
+                const gain = suppressedDev * scale;
+                rawGains.push(gain);
+                currentTotal += gain;
+            }
 
-                // 3. Error Correction: We must hit 'endSub' at 'endIdx'
-                const error = endSub - currentTotal;
-                const correctionPerHour = error / (hours || 1);
+            const error = endSub - currentTotal;
+            const correctionPerHour = error / (hours || 1);
 
-                let rollingSub = startSub;
-                for (let j = startIdx + 1; j < endIdx; j++) {
-                    rollingSub += rawGains[j - (startIdx + 1)] + correctionPerHour;
-                    
-                    // Safe Clamping: Allow 2% "over-swing" for realism
-                    const buffer = Math.abs(subDiff || 1000) * 0.02;
-                    const min = Math.min(startSub, endSub) - buffer;
-                    const max = Math.max(startSub, endSub) + buffer;
-                    
-                    estStats[j].subscribers = Math.floor(Math.max(min, Math.min(max, rollingSub)));
-                }
-            } else if (k > 0 && endIdx === estStats.length - 1) {
+            let rollingSub = startSub;
+            for (let j = startIdx + 1; j < endIdx; j++) {
+                rollingSub += rawGains[j - (startIdx + 1)] + correctionPerHour;
+                const buffer = Math.abs(subDiff || 1000) * 0.05;
+                const min = Math.min(startSub, endSub) - buffer;
+                const max = Math.max(startSub, endSub) + buffer;
+                estStats[j].subscribers = Math.floor(Math.max(min, Math.min(max, rollingSub)));
+            }
+        }
                 // Final projection for live growth
                 const prevStartIdx = subChanges[k-1];
                 const prevEndIdx = subChanges[k];
