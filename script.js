@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v6.9 Initialized');
+    console.log('YT Analytics v7.0 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -860,6 +860,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentViewDiff = Math.abs(estStats[j].views - estStats[startIdx].views);
                 estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio || 0.001)));
             }
+        }
+        
+        }
+
+        // --- PHASE 3: GAUSSIAN SMOOTHING ---
+        // Final pass to eliminate V-spikes and jitter
+        const smoothedSubs = [...estStats.map(s => s.subscribers)];
+        for (let i = 2; i < estStats.length - 2; i++) {
+            // 5-point weighted moving average
+            smoothedSubs[i] = Math.floor(
+                (estStats[i-2].subscribers * 0.1) +
+                (estStats[i-1].subscribers * 0.2) +
+                (estStats[i].subscribers * 0.4) +
+                (estStats[i+1].subscribers * 0.2) +
+                (estStats[i+2].subscribers * 0.1)
+            );
+        }
+        for (let i = 0; i < estStats.length; i++) {
+            estStats[i].subscribers = smoothedSubs[i];
         }
         
         return estStats;
