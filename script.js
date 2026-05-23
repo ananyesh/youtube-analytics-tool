@@ -911,7 +911,9 @@ document.addEventListener('DOMContentLoaded', () => {
             sourceStats = estimateGrowth(sourceStats);
         }
         
-        const stats = processChartStats(sourceStats, granularitySelect.value);
+        const stats = [...sourceStats].sort((a, b) =>
+            new Date(a.recorded_at) - new Date(b.recorded_at)
+        );
         const headers = ['Timestamp', 'Subscribers', 'Views', 'Videos'];
         const rows = stats.map(s => [
             new Date(s.recorded_at).toISOString().replace('T', ' ').substring(0, 19),
@@ -924,7 +926,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `${currentChannelData.title}_${isEstimating ? 'estimated_' : ''}analytics_${granularitySelect.value}.csv`);
+        link.setAttribute("download", `${currentChannelData.title}_${isEstimating ? 'estimated_' : ''}analytics_hourly.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
