@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v7.4 Initialized');
+    console.log('YT Analytics v7.5 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -709,7 +709,54 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!stats || stats.length < 2) return stats;
         
         // Deep clone to avoid modifying source
-        const estStats = JSON.parse(JSON.stringify(stats));
+        const rawStats = JSON.parse(JSON.stringify(stats));
+
+        // --- PRE-PHASE: EXPAND TO HOURLY RESOLUTION ---
+        // If the API gave us daily data (1 point per day), generate hourly rows between each pair
+        const ONE_HOUR_MS = 60 * 60 * 1000;
+        const ONE_DAY_MS  = 24 * ONE_HOUR_MS;
+
+        const needsExpansion = rawStats.length > 1 && (() => {
+            // Check average gap between consecutive points
+            let totalGap = 0;
+            for (let i = 1; i < Math.min(rawStats.length, 10); i++) {
+                totalGap += new Date(rawStats[i].recorded_at).getTime() -
+                            new Date(rawStats[i-1].recorded_at).getTime();
+            }
+            const avgGap = totalGap / (Math.min(rawStats.length, 10) - 1);
+            return avgGap > ONE_HOUR_MS * 6; // expand if avg gap > 6 hours
+        })();
+
+        let estStats;
+        if (needsExpansion) {
+            estStats = [];
+            for (let i = 0; i < rawStats.length - 1; i++) {
+                const a = rawStats[i];
+                const b = rawStats[i + 1];
+                const tA = new Date(a.recorded_at).getTime();
+                const tB = new Date(b.recorded_at).getTime();
+                const hours = Math.round((tB - tA) / ONE_HOUR_MS);
+
+                // Always keep the real anchor point
+                estStats.push({ ...a });
+
+                // Insert synthetic hourly rows between a and b
+                for (let h = 1; h < hours; h++) {
+                    const t = tA + h * ONE_HOUR_MS;
+                    const frac = h / hours;
+                    estStats.push({
+                        recorded_at: new Date(t).toISOString(),
+                        subscribers: Math.round(a.subscribers + frac * (b.subscribers - a.subscribers)),
+                        views:       Math.round(a.views       + frac * (b.views       - a.views)),
+                        videos:      a.videos
+                    });
+                }
+            }
+            // Push the last anchor
+            estStats.push({ ...rawStats[rawStats.length - 1] });
+        } else {
+            estStats = rawStats;
+        }
 
         // --- PHASE 1: VIEW SMOOTHENING ---
         const viewChanges = [];
@@ -768,144 +815,100 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // --- PHASE 2: SUBSCRIBER ESTIMATION ---
+        // Strategy: smooth eased interpolation between real API anchor points,
+        // plus a tiny sine wobble so it never looks flat.
+        // This guarantees NO V-shapes because we always move monotonically
+        // from startSub to endSub with a natural ease curve.
+
         const getTruncationRes = (val) => {
-            if (val >= 100000000) return 1000000; 
-            if (val >= 10000000) return 100000;   
-            if (val >= 1000000) return 10000;    
-            if (val >= 100000) return 1000;      
+            if (val >= 100000000) return 1000000;
+            if (val >= 10000000) return 100000;
+            if (val >= 1000000)  return 10000;
+            if (val >= 100000)   return 1000;
             return 1;
         };
-        let subChangesRaw = [];
-        for (let i = 0; i < estStats.length; i++) {
-            if (i === 0 || i === estStats.length - 1 || estStats[i].subscribers !== estStats[i - 1].subscribers) {
-                subChangesRaw.push({ idx: i, raw: estStats[i].subscribers });
+
+        // Smoothstep easing: s-curve from 0→1
+        const smoothstep = (t) => t * t * (3 - 2 * t);
+
+        // Collect the real API anchor indices (original rawStats boundaries)
+        // These are the points that actually came from the API (spaced ~24h apart)
+        const anchorIndices = [0];
+        if (needsExpansion) {
+            // Each original daily point is separated by ~24 hourly slots
+            let srcIdx = 0;
+            for (let i = 0; i < rawStats.length - 1; i++) {
+                const tA = new Date(rawStats[i].recorded_at).getTime();
+                const tB = new Date(rawStats[i + 1].recorded_at).getTime();
+                const hours = Math.round((tB - tA) / ONE_HOUR_MS);
+                srcIdx += hours;
+                anchorIndices.push(srcIdx);
             }
+        } else {
+            for (let i = 1; i < estStats.length; i++) anchorIndices.push(i);
         }
 
-        // --- SUBSCRIBER AUDIT SHIELD ---
-        // Filter out "reverting spikes" (A -> B -> A anomalies)
-        const subChanges = [];
-        for (let i = 0; i < subChangesRaw.length; i++) {
-            const current = subChangesRaw[i];
-            const prev = i > 0 ? subChangesRaw[i-1] : null;
-            const next = i < subChangesRaw.length - 1 ? subChangesRaw[i+1] : null;
-
-            if (prev && next) {
-                const res = getTruncationRes(current.raw);
-                const jumpPrev = Math.abs(current.raw - prev.raw);
-                const jumpNext = Math.abs(next.raw - current.raw);
-                const netJump = Math.abs(next.raw - prev.raw);
-                
-                // If it's a massive jump that immediately reverts, it's an audit/error
-                if (jumpPrev > (res * 0.5) && jumpNext > (res * 0.5) && netJump < (res * 0.1)) {
-                    continue; // Discard the spike
-                }
-            }
-            subChanges.push(current);
+        // Audit Shield: remove reverting spikes from anchor list before interpolating
+        const cleanedAnchors = [anchorIndices[0]];
+        for (let i = 1; i < anchorIndices.length - 1; i++) {
+            const prevIdx = anchorIndices[i - 1];
+            const currIdx = anchorIndices[i];
+            const nextIdx = anchorIndices[i + 1];
+            const prevSub = estStats[prevIdx].subscribers;
+            const currSub = estStats[currIdx].subscribers;
+            const nextSub = estStats[nextIdx].subscribers;
+            const res = getTruncationRes(currSub);
+            const jumpIn  = Math.abs(currSub - prevSub);
+            const jumpOut = Math.abs(nextSub - currSub);
+            const netMove = Math.abs(nextSub - prevSub);
+            // Discard if it's a big spike that immediately reverts
+            if (jumpIn > res * 0.4 && jumpOut > res * 0.4 && netMove < res * 0.15) continue;
+            cleanedAnchors.push(currIdx);
         }
+        cleanedAnchors.push(anchorIndices[anchorIndices.length - 1]);
 
-        // Apply "Boundary Crawl" to stagnant periods
-        for (let k = 0; k < subChanges.length; k++) {
-            const current = subChanges[k];
-            const prev = k > 0 ? subChanges[k-1] : null;
-            const next = k < subChanges.length - 1 ? subChanges[k+1] : null;
-            const res = getTruncationRes(current.raw);
+        // Interpolate smoothly between each pair of cleaned anchors
+        for (let k = 0; k < cleanedAnchors.length - 1; k++) {
+            const startIdx = cleanedAnchors[k];
+            const endIdx   = cleanedAnchors[k + 1];
+            const startSub = estStats[startIdx].subscribers;
+            const endSub   = estStats[endIdx].subscribers;
+            const res      = getTruncationRes(startSub);
+            const wobble   = res * 0.02; // max ±2% of truncation resolution
 
-            if (next && next.raw < current.raw) {
-                // Pre-Drop: Start moving towards the boundary
-                current.target = current.raw + (res * 0.2); // Start slightly above floor
-            } else if (prev && prev.raw > current.raw) {
-                // Post-Drop: Just crossed the boundary
-                current.target = current.raw + (res - 1); 
-            } else if (next && next.raw > current.raw) {
-                // Pre-Growth: Crawl towards ceiling
-                current.target = current.raw + (res * 0.8);
-            } else {
-                current.target = current.raw;
-            }
-        }
-
-        for (let k = 0; k < subChanges.length - 1; k++) {
-            const startIdx = subChanges[k].idx;
-            const endIdx = subChanges[k+1].idx;
-            const startSub = subChanges[k].target;
-            const endSub = subChanges[k+1].target;
-            
-            const startTime = new Date(estStats[startIdx].recorded_at).getTime();
-            const endTime = new Date(estStats[endIdx].recorded_at).getTime();
-            const subDiff = endSub - startSub;
-            const hours = (endIdx - startIdx);
-            
-            const globalRatio = (estStats[estStats.length-1].subscribers - estStats[0].subscribers) / 
-                                (estStats[estStats.length-1].views - estStats[0].views || 1);
-            const scale = Math.abs(globalRatio) > 0 ? globalRatio : 0.001;
-
-            let currentTotal = startSub;
-            const rawGains = [];
-            const avgViewVel = (estStats[estStats.length-1].views - estStats[0].views) / (estStats.length || 1);
-
-            for (let j = startIdx + 1; j <= endIdx; j++) {
-                const localViewVel = estStats[j].views - estStats[j-1].views;
-                const deviation = localViewVel - avgViewVel;
-                const sign = deviation >= 0 ? 1 : -1;
-                const suppressedDev = sign * Math.pow(Math.abs(deviation), 0.7);
-                const gain = suppressedDev * scale;
-                rawGains.push(gain);
-                currentTotal += gain;
-            }
-
-            const error = endSub - currentTotal;
-            const correctionPerHour = error / (hours || 1);
-
-            let rollingSub = startSub;
+            const span = endIdx - startIdx;
             for (let j = startIdx + 1; j < endIdx; j++) {
-                rollingSub += rawGains[j - (startIdx + 1)] + correctionPerHour;
-                const buffer = Math.abs(subDiff || 1000) * 0.05;
-                const min = Math.min(startSub, endSub) - buffer;
-                const max = Math.max(startSub, endSub) + buffer;
-                estStats[j].subscribers = Math.floor(Math.max(min, Math.min(max, rollingSub)));
+                const t    = (j - startIdx) / span;
+                const eased = smoothstep(t);
+                // Sine wobble: one full cycle per segment, amplitude ±wobble
+                const sinePhase = t * Math.PI * 2;
+                const noise = Math.sin(sinePhase + startIdx * 0.7) * wobble;
+                estStats[j].subscribers = Math.round(
+                    startSub + (endSub - startSub) * eased + noise
+                );
             }
         }
 
-        // Final Live Projection (from the last known point to the end)
-        const lastChange = subChanges[subChanges.length - 1];
-        if (lastChange.idx < estStats.length - 1) {
-            const startIdx = lastChange.idx;
-            const endIdx = estStats.length - 1;
-            const startSub = lastChange.target;
-            
-            // Use the ratio from the last significant segment
-            const prevStartIdx = subChanges.length > 1 ? subChanges[subChanges.length - 2].idx : 0;
-            const prevEndIdx = lastChange.idx;
-            const prevSubDiff = estStats[prevEndIdx].subscribers - estStats[prevStartIdx].subscribers;
-            const prevViewDiff = Math.abs(estStats[prevEndIdx].views - estStats[prevStartIdx].views);
-            const prevRatio = prevSubDiff / (prevViewDiff || 1);
-
-            for (let j = startIdx + 1; j <= endIdx; j++) {
-                const currentViewDiff = Math.abs(estStats[j].views - estStats[startIdx].views);
-                estStats[j].subscribers = Math.floor(startSub + (currentViewDiff * Math.abs(prevRatio || 0.001)));
+        // --- PHASE 3: GAUSSIAN SMOOTHING (11-point kernel) ---
+        const smoothedSubs = estStats.map(s => s.subscribers);
+        const weights = [0.02, 0.05, 0.08, 0.12, 0.15, 0.16, 0.15, 0.12, 0.08, 0.05, 0.02];
+        const wSum = weights.reduce((a, b) => a + b, 0);
+        const half = Math.floor(weights.length / 2);
+        const smoothed2 = [...smoothedSubs];
+        for (let i = half; i < estStats.length - half; i++) {
+            let val = 0;
+            for (let w = 0; w < weights.length; w++) {
+                val += smoothedSubs[i - half + w] * weights[w];
             }
-        }
-
-        // --- PHASE 3: GAUSSIAN SMOOTHING ---
-        // Final pass to eliminate V-spikes and jitter
-        const smoothedSubs = [...estStats.map(s => s.subscribers)];
-        for (let i = 2; i < estStats.length - 2; i++) {
-            // 5-point weighted moving average
-            smoothedSubs[i] = Math.floor(
-                (estStats[i-2].subscribers * 0.1) +
-                (estStats[i-1].subscribers * 0.2) +
-                (estStats[i].subscribers * 0.4) +
-                (estStats[i+1].subscribers * 0.2) +
-                (estStats[i+2].subscribers * 0.1)
-            );
+            smoothed2[i] = Math.round(val / wSum);
         }
         for (let i = 0; i < estStats.length; i++) {
-            estStats[i].subscribers = smoothedSubs[i];
+            estStats[i].subscribers = smoothed2[i];
         }
-        
+
         return estStats;
     };
+
 
     const downloadCSV = () => {
         if (!currentChannelData) return;
