@@ -122,30 +122,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const fetchProxied = async (url) => {
         const proxies = [
             (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}&t=${Date.now()}`,
+            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}&t=${Date.now()}`,
             (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-            (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
             (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
+            (u) => `https://proxy.cors.sh/${u}`,
+            (u) => `https://cors-anywhere.herokuapp.com/${u}`,
+            (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
+            (u) => `https://yacdn.org/proxy/${u}`,
         ];
 
         const tryProxy = async (getProxyUrl) => {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 2500); // HARD 2.5s TIMEOUT
+            const id = setTimeout(() => controller.abort(), 4000); // 4s per proxy
 
             try {
                 const pUrl = getProxyUrl(url);
                 const res = await fetch(pUrl, { signal: controller.signal });
                 clearTimeout(id);
-                
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const text = await res.text();
-                let data = JSON.parse(text);
                 
-                if (data && typeof data === 'object' && data.contents) {
-                    data = JSON.parse(data.contents);
+                // Handle both raw JSON and allorigins-wrapped responses
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch {
+                    throw new Error("Non-JSON response");
                 }
-                
-                if (!data || (typeof data !== 'object')) throw new Error("Invalid");
+
+                if (data && typeof data === 'object' && data.contents) {
+                    try { data = JSON.parse(data.contents); } catch { throw new Error("Bad contents"); }
+                }
+
+                if (!data || typeof data !== 'object') throw new Error("Invalid data");
                 return data;
             } catch (e) {
                 clearTimeout(id);
@@ -153,16 +163,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // RACE: Try first 3 immediately (Burst Mode)
+        // Race ALL proxies simultaneously — fastest valid response wins
         try {
-            return await Promise.any(proxies.slice(0, 3).map(p => tryProxy(p)));
+            return await Promise.any(proxies.map(p => tryProxy(p)));
         } catch (e) {
-            // Backup Burst
-            try {
-                return await Promise.any(proxies.slice(3).map(p => tryProxy(p)));
-            } catch (err) {
-                throw new Error("Connection timed out. Please try again in a moment.");
-            }
+            throw new Error("Connection timed out. Please try again in a moment.");
         }
     };
 
