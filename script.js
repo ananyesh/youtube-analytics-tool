@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v7.2 Initialized');
+    console.log('YT Analytics v7.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
