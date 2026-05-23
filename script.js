@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v7.5 Initialized');
+    console.log('YT Analytics v7.7 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -642,6 +642,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isLargeSet = processedStats.length > 1000;
         
+        // Enforce a minimum y-axis suggested range matching the channel's truncation resolution.
+        // This prevents micro-fluctuations (like the sine wobble) from looking like massive hills/valleys when flat.
+        const yValues = processedStats.map(s => s[currentChartType]);
+        const minVal = Math.min(...yValues);
+        const maxVal = Math.max(...yValues);
+        let suggestedMin = minVal;
+        let suggestedMax = maxVal;
+        
+        if (currentChartType === 'subscribers') {
+            const latestSub = currentChannelData.subscribers;
+            const getTruncationRes = (val) => {
+                if (val >= 100000000) return 1000000;
+                if (val >= 10000000) return 100000;
+                if (val >= 1000000)  return 10000;
+                if (val >= 100000)   return 1000;
+                return 1;
+            };
+            const res = getTruncationRes(latestSub);
+            if (maxVal - minVal < res) {
+                const center = (maxVal + minVal) / 2;
+                suggestedMin = center - res / 2;
+                suggestedMax = center + res / 2;
+            }
+        }
+
         growthChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -694,6 +719,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         offset: true
                     },
                     y: {
+                        suggestedMin: suggestedMin,
+                        suggestedMax: suggestedMax,
                         grid: { color: 'rgba(255,255,255,0.05)' },
                         ticks: { color: '#888', callback: value => formatNumber(value) }
                     }
