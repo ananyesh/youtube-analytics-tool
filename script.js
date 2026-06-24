@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v8.0 Initialized');
+    console.log('YT Analytics v8.1 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -278,12 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const fromDate = '2005-04-23'; 
             
             const searchItem = searchData.results[0];
-            let statsData = null;
-            try {
-                statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
-            } catch (e) {
-                console.warn("Failed to fetch stats, using fallback", e);
-            }
+            let statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
 
             if (!statsData || statsData.length === 0 || !statsData[0].stats || statsData[0].stats.length === 0) {
                 console.log("Generating fallback stats for untracked channel:", channelId);
@@ -422,12 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const today = new Date().toISOString().split('T')[0];
-            let statsData = null;
-            try {
-                statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
-            } catch (e) {
-                console.warn("Compare stats fetch failed, fallback will be used", e);
-            }
+            let statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
 
             if (!statsData || statsData.length === 0 || !statsData[0].stats || statsData[0].stats.length === 0) {
                 console.log("Generating fallback stats for compare channel:", channelId);
