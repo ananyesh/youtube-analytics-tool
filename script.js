@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v7.7 Initialized');
+    console.log('YT Analytics v7.8 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -121,14 +121,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchProxied = async (url) => {
         const proxies = [
-            (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}&t=${Date.now()}`,
+            (u) => `https://api.cors.lol/?url=${encodeURIComponent(u)}`,
             (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}&t=${Date.now()}`,
-            (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-            (u) => `https://proxy.cors.sh/${u}`,
-            (u) => `https://cors-anywhere.herokuapp.com/${u}`,
             (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
-            (u) => `https://yacdn.org/proxy/${u}`,
         ];
 
         const tryProxy = async (getProxyUrl) => {
@@ -171,6 +166,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const searchChannels = async (query) => {
+        try {
+            const res = await fetch(`https://mixerno.space/api/youtube-channel-counter/search/${encodeURIComponent(query)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.list && data.list.length > 0) {
+                    return {
+                        results: data.list.map(item => ({
+                            id: item[2],
+                            title: item[0],
+                            thumbnails: item[1],
+                            thumbnail: item[1]
+                        }))
+                    };
+                }
+            }
+        } catch (e) {
+            console.warn('mixerno search failed', e);
+        }
+        return await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
+    };
+
     channelInput.addEventListener('input', () => {
         const query = channelInput.value.trim().toLowerCase();
         clearTimeout(suggestionTimeout);
@@ -187,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         suggestionTimeout = setTimeout(async () => {
             try {
-                const data = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
+                const data = await searchChannels(query);
                 if (data && data.results && data.results.length > 0) {
                     const sliced = data.results.slice(0, 5);
                     saveToCache(query, sliced);
@@ -243,9 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window._syncTimeout = null;
         }
         
-        isEstimating = false;
-        const estBtn = document.getElementById('estBtn');
-        if (estBtn) estBtn.classList.remove('active');
+        isEstimating = true;
         
         suggestions.classList.add('hidden');
         showState('loading');
@@ -255,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .replace(/https?:\/\/(www\.)?youtube\.com\/(channel\/|user\/|c\/|@)?/g, '')
                 .replace(/\/$/g, '');
 
-            const searchData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(cleanQuery)}`);
+            const searchData = await searchChannels(cleanQuery);
 
             if (!searchData || !searchData.results || searchData.results.length === 0) {
                 throw new Error('No channel found matching your input.');
@@ -314,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         compSuggestionTimeout = setTimeout(async () => {
             try {
-                const data = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
+                const data = await searchChannels(query);
                 
                 if (data && data.results && data.results.length > 0) {
                     renderCompSuggestions(data.results.slice(0, 5));
@@ -729,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    let isEstimating = false;
+    let isEstimating = true;
     let originalStats = null;
 
     const estimateGrowth = (stats) => {
@@ -1167,14 +1182,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') handleSearch();
     });
     granularitySelect.addEventListener('change', updateChart);
-    const estBtn = document.getElementById('estBtn');
-    if (estBtn) {
-        estBtn.addEventListener('click', () => {
-            isEstimating = !isEstimating;
-            estBtn.classList.toggle('active', isEstimating);
-            updateChart();
-        });
-    }
+    // Est button removed
     downloadBtn.addEventListener('click', downloadCSV);
 
     
