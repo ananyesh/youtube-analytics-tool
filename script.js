@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v8.1 Initialized');
+    console.log('YT Analytics v8.2 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -165,7 +165,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const searchChannels = async (query) => {
         try {
-            const res = await fetch(`https://mixerno.space/api/youtube-channel-counter/search/${encodeURIComponent(query)}`);
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(`https://api.socialcounts.org/youtube-live-subscriber-count/search/${encodeURIComponent(query)}`, { signal: controller.signal });
+            clearTimeout(id);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.items && data.items.length > 0) {
+                    return {
+                        results: data.items.map(item => ({
+                            id: item.id,
+                            title: item.title,
+                            thumbnails: item.pfp,
+                            thumbnail: item.pfp,
+                            handle: item.handle
+                        }))
+                    };
+                }
+            }
+        } catch (e) {
+            console.warn('socialcounts search failed', e);
+        }
+
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(`https://mixerno.space/api/youtube-channel-counter/search/${encodeURIComponent(query)}`, { signal: controller.signal });
+            clearTimeout(id);
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.list && data.list.length > 0) {
@@ -182,7 +208,78 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.warn('mixerno search failed', e);
         }
-        return await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
+
+        try {
+            return await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${encodeURIComponent(query)}`);
+        } catch (e) {
+            if (/^UC[\w-]{22}$/.test(query)) {
+                return { results: [{ id: query, title: query }] };
+            }
+            throw e;
+        }
+    };
+
+    const fetchLiveChannelSnapshot = async (channelId, searchItem = {}) => {
+        let sctools = null;
+        let socialcounts = null;
+
+        await Promise.all([
+            (async () => {
+                try {
+                    const c = new AbortController();
+                    setTimeout(() => c.abort(), 6000);
+                    const r = await fetch(`https://ests.sctools.org/api/get/${channelId}`, { signal: c.signal });
+                    if (r.ok) sctools = await r.json();
+                } catch (e) { console.warn('sctools snapshot failed', e); }
+            })(),
+            (async () => {
+                try {
+                    const c = new AbortController();
+                    setTimeout(() => c.abort(), 6000);
+                    const r = await fetch(`https://api.socialcounts.org/youtube-live-subscriber-count/${channelId}`, { signal: c.signal });
+                    if (r.ok) socialcounts = await r.json();
+                } catch (e) { console.warn('socialcounts snapshot failed', e); }
+            })()
+        ]);
+
+        const apiSubs = (sctools && sctools.stats && sctools.stats.apiCount)
+            || (socialcounts && socialcounts.counters && socialcounts.counters.api && socialcounts.counters.api.subscriberCount)
+            || searchItem.subscribers;
+
+        const views = (sctools && sctools.stats && sctools.stats.viewCount)
+            || (socialcounts && socialcounts.counters && socialcounts.counters.api && socialcounts.counters.api.viewCount)
+            || 0;
+
+        const videos = (sctools && sctools.stats && sctools.stats.videoCount)
+            || (socialcounts && socialcounts.counters && socialcounts.counters.api && socialcounts.counters.api.videoCount)
+            || 0;
+
+        if (!apiSubs && !views) {
+            throw new Error('Could not retrieve stats for this channel.');
+        }
+
+        const subs = apiSubs || 0;
+        const title = (sctools && sctools.info && sctools.info.name) || searchItem.title || channelId;
+        const thumb = (sctools && sctools.info && sctools.info.avatar) || getThumb(searchItem);
+        const country = (sctools && sctools.info && sctools.info.country) || 'Global';
+        const now = Date.now();
+        const yesterday = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        const todayIso = new Date(now).toISOString();
+
+        return [{
+            id: channelId,
+            title,
+            thumbnail: thumb,
+            thumbnails: thumb,
+            country,
+            published_at: todayIso,
+            topics: ['YouTube'],
+            subscribers: subs,
+            stats: [
+                { recorded_at: todayIso, subscribers: subs, views, videos },
+                { recorded_at: yesterday, subscribers: subs, views, videos }
+            ]
+        }];
     };
 
     channelInput.addEventListener('input', () => {
@@ -257,8 +354,6 @@ document.addEventListener('DOMContentLoaded', () => {
             window._syncTimeout = null;
         }
         
-        isEstimating = true;
-        
         suggestions.classList.add('hidden');
         showState('loading');
         
@@ -278,61 +373,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const fromDate = '2005-04-23'; 
             
             const searchItem = searchData.results[0];
-            let statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
+            let statsData = null;
+            try {
+                statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
+            } catch (e) {
+                console.warn("VidIQ stats proxy failed, falling back to live snapshot:", e.message);
+            }
 
             if (!statsData || statsData.length === 0 || !statsData[0].stats || statsData[0].stats.length === 0) {
-                console.log("Generating fallback stats for untracked channel:", channelId);
-                
-                let subscribers = searchItem.subscribers;
-                if (!subscribers) {
-                    try {
-                        const vidiqSearch = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${channelId}`);
-                        if (vidiqSearch && vidiqSearch.results && vidiqSearch.results.length > 0) {
-                            const matched = vidiqSearch.results.find(r => r.id === channelId) || vidiqSearch.results[0];
-                            if (matched && matched.subscribers) {
-                                subscribers = matched.subscribers;
-                            }
-                        }
-                    } catch (err) {
-                        console.warn("VidIQ fallback search failed", err);
-                    }
-                }
-                if (!subscribers) {
-                    subscribers = 1000000; // 1M default fallback
-                }
-
-                const stats = [];
-                const now = new Date();
-                let currentSubs = subscribers;
-                const viewsPerSub = 150 + Math.random() * 100;
-                let currentViews = Math.floor(currentSubs * viewsPerSub);
-                const videosCount = Math.floor(100 + Math.random() * 900);
-                const growthRate = 0.0005 + Math.random() * 0.0015;
-                const viewGrowthRate = growthRate * (1 + (Math.random() - 0.5) * 0.2);
-
-                for (let i = 0; i < 90; i++) {
-                    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-                    stats.push({
-                        recorded_at: date.toISOString(),
-                        subscribers: Math.round(currentSubs),
-                        views: Math.round(currentViews),
-                        videos: videosCount
-                    });
-                    currentSubs = currentSubs / (1 + growthRate);
-                    currentViews = currentViews / (1 + viewGrowthRate);
-                }
-
-                statsData = [{
-                    id: channelId,
-                    title: searchItem.title || 'Channel Stats',
-                    thumbnail: searchItem.thumbnail || searchItem.thumbnails || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png',
-                    thumbnails: searchItem.thumbnail || searchItem.thumbnails || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png',
-                    country: 'Global',
-                    published_at: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(),
-                    topics: ['YouTube'],
-                    subscribers: subscribers,
-                    stats: stats
-                }];
+                statsData = await fetchLiveChannelSnapshot(channelId, searchItem);
             }
 
             // --- DATA CLEANING ---
@@ -417,61 +466,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const today = new Date().toISOString().split('T')[0];
-            let statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
+            let statsData = null;
+            try {
+                statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=2005-04-23&to=${today}`);
+            } catch (e) {
+                console.warn("Compare VidIQ proxy failed, falling back to live snapshot:", e.message);
+            }
 
             if (!statsData || statsData.length === 0 || !statsData[0].stats || statsData[0].stats.length === 0) {
-                console.log("Generating fallback stats for compare channel:", channelId);
-                
-                let subscribers = searchItem ? searchItem.subscribers : null;
-                if (!subscribers) {
-                    try {
-                        const vidiqSearch = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/search?query=${channelId}`);
-                        if (vidiqSearch && vidiqSearch.results && vidiqSearch.results.length > 0) {
-                            const matched = vidiqSearch.results.find(r => r.id === channelId) || vidiqSearch.results[0];
-                            if (matched && matched.subscribers) {
-                                subscribers = matched.subscribers;
-                            }
-                        }
-                    } catch (err) {
-                        console.warn("VidIQ compare fallback search failed", err);
-                    }
-                }
-                if (!subscribers) {
-                    subscribers = 1000000;
-                }
-
-                const stats = [];
-                const now = new Date();
-                let currentSubs = subscribers;
-                const viewsPerSub = 150 + Math.random() * 100;
-                let currentViews = Math.floor(currentSubs * viewsPerSub);
-                const videosCount = Math.floor(100 + Math.random() * 900);
-                const growthRate = 0.0005 + Math.random() * 0.0015;
-                const viewGrowthRate = growthRate * (1 + (Math.random() - 0.5) * 0.2);
-
-                for (let i = 0; i < 90; i++) {
-                    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-                    stats.push({
-                        recorded_at: date.toISOString(),
-                        subscribers: Math.round(currentSubs),
-                        views: Math.round(currentViews),
-                        videos: videosCount
-                    });
-                    currentSubs = currentSubs / (1 + growthRate);
-                    currentViews = currentViews / (1 + viewGrowthRate);
-                }
-
-                statsData = [{
-                    id: channelId,
-                    title: (searchItem && searchItem.title) || 'Channel Stats',
-                    thumbnail: (searchItem && (searchItem.thumbnail || searchItem.thumbnails)) || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png',
-                    thumbnails: (searchItem && (searchItem.thumbnail || searchItem.thumbnails)) || 'https://www.youtube.com/s/desktop/5732ef2e/img/favicon_144x144.png',
-                    country: 'Global',
-                    published_at: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(),
-                    topics: ['YouTube'],
-                    subscribers: subscribers,
-                    stats: stats
-                }];
+                statsData = await fetchLiveChannelSnapshot(channelId, searchItem || {});
             }
             
             // Ensure ASCENDING order (Oldest to Newest) for the processing engine
@@ -638,27 +641,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 2000);
 
 
-        // --- SMART SYNC LOOP: Recursive timeout to prevent stacking ---
+        // --- SMART SYNC LOOP: Direct CORS-enabled APIs (SCTools + SocialCounts fallback) ---
         let isSyncing = false;
         const syncLive = async () => {
             if (isSyncing) return;
             isSyncing = true;
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://ests.sctools.org/api/get/' + channelId)}&cache=` + Date.now();
-                const res = await fetch(proxyUrl, { signal: controller.signal });
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(`https://ests.sctools.org/api/get/${channelId}`, { signal: controller.signal });
                 clearTimeout(timeoutId);
-                const wrapper = await res.json();
-                if (wrapper && wrapper.contents) {
-                    const json = JSON.parse(wrapper.contents);
-                    if (json && json.stats && json.stats.estCount) {
-                        lastSimulatedSubs = Math.floor(json.stats.estCount);
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json && json.stats) {
+                        const liveSub = json.stats.estCount || json.stats.apiCount;
+                        if (liveSub) lastSimulatedSubs = Math.floor(liveSub);
                         if (json.stats.viewCount)  viewOdometer.update(json.stats.viewCount);
                         if (json.stats.videoCount) videoOdometer.update(json.stats.videoCount);
+                        if (json.averages && typeof json.averages.hourly === 'number') {
+                            subsPerSecond = Math.max(0, json.averages.hourly / 3600);
+                        }
+                        isSyncing = false;
+                        if (currentChannelData && currentChannelData.id === channelId) {
+                            window._syncTimeout = setTimeout(syncLive, 10000);
+                        }
+                        return;
                     }
                 }
-            } catch (e) { /* Silent fallback — SCTools is down, simulation continues */ }
+            } catch (e) { /* Try SocialCounts fallback */ }
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(`https://api.socialcounts.org/youtube-live-subscriber-count/${channelId}`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (res.ok) {
+                    const json = await res.json();
+                    const est = json && json.counters && (json.counters.estimation || json.counters.api);
+                    if (est) {
+                        if (est.subscriberCount) lastSimulatedSubs = Math.floor(est.subscriberCount);
+                        if (est.viewCount) viewOdometer.update(est.viewCount);
+                        if (est.videoCount) videoOdometer.update(est.videoCount);
+                    }
+                }
+            } catch (e) { /* Silent fallback — simulation continues */ }
             isSyncing = false;
             // Schedule next sync only after this one finishes
             if (currentChannelData && currentChannelData.id === channelId) {
@@ -711,9 +737,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedKeys = Object.keys(groups).sort();
         // SAFETY GATE: If we already have a massive dataset (>5000 points), skip gap-filling to prevent crash
         if (sortedKeys.length > 1 && sortedKeys.length < 5000 && granularity !== 'yearly') {
-            // When estimating, we allow much larger gaps to ensure continuity
-            const MAX_GAP_HOURS = isEstimating ? 500 : 48; 
-            const MAX_GAP_DAYS = isEstimating ? 365 : 31;
+            const MAX_GAP_HOURS = 48; 
+            const MAX_GAP_DAYS = 31;
             
             for (let i = 0; i < sortedKeys.length - 1; i++) {
                 const start = new Date(groups[sortedKeys[i]].recorded_at);
@@ -770,13 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const getProcessedStats = () => {
         const granularity = granularitySelect.value;
-        let stats = currentChannelData.stats;
-        
-        if (isEstimating) {
-            stats = estimateGrowth(stats);
-        }
-        
-        return processChartStats(stats, granularity);
+        return processChartStats(currentChannelData.stats, granularity);
     };
 
     const updateChart = () => {
@@ -792,11 +811,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isLargeSet = processedStats.length > 1000;
         
-        // Enforce a minimum y-axis suggested range matching the channel's truncation resolution.
-        // This prevents micro-fluctuations (like the sine wobble) from looking like massive hills/valleys when flat.
-        const yValues = processedStats.map(s => s[currentChartType]);
-        const minVal = Math.min(...yValues);
-        const maxVal = Math.max(...yValues);
+        const yValues = processedStats.map(s => s[currentChartType]).filter(v => v !== null && v !== undefined);
+        const minVal = yValues.length ? Math.min(...yValues) : 0;
+        const maxVal = yValues.length ? Math.max(...yValues) : 0;
         let suggestedMin = minVal;
         let suggestedMax = maxVal;
         
@@ -879,214 +896,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    let isEstimating = true;
-    let originalStats = null;
-
-    const estimateGrowth = (stats) => {
-        if (!stats || stats.length < 2) return stats;
-        
-        // Deep clone to avoid modifying source
-        const rawStats = JSON.parse(JSON.stringify(stats));
-
-        // --- PRE-PHASE: EXPAND TO HOURLY RESOLUTION ---
-        // If the API gave us daily data (1 point per day), generate hourly rows between each pair
-        const ONE_HOUR_MS = 60 * 60 * 1000;
-        const ONE_DAY_MS  = 24 * ONE_HOUR_MS;
-
-        const needsExpansion = rawStats.length > 1 && (() => {
-            // Check average gap between consecutive points
-            let totalGap = 0;
-            for (let i = 1; i < Math.min(rawStats.length, 10); i++) {
-                totalGap += new Date(rawStats[i].recorded_at).getTime() -
-                            new Date(rawStats[i-1].recorded_at).getTime();
-            }
-            const avgGap = totalGap / (Math.min(rawStats.length, 10) - 1);
-            return avgGap > ONE_HOUR_MS * 6; // expand if avg gap > 6 hours
-        })();
-
-        let estStats;
-        if (needsExpansion) {
-            estStats = [];
-            for (let i = 0; i < rawStats.length - 1; i++) {
-                const a = rawStats[i];
-                const b = rawStats[i + 1];
-                const tA = new Date(a.recorded_at).getTime();
-                const tB = new Date(b.recorded_at).getTime();
-                const hours = Math.round((tB - tA) / ONE_HOUR_MS);
-
-                // Always keep the real anchor point
-                estStats.push({ ...a });
-
-                // Insert synthetic hourly rows between a and b
-                for (let h = 1; h < hours; h++) {
-                    const t = tA + h * ONE_HOUR_MS;
-                    const frac = h / hours;
-                    estStats.push({
-                        recorded_at: new Date(t).toISOString(),
-                        subscribers: Math.round(a.subscribers + frac * (b.subscribers - a.subscribers)),
-                        views:       Math.round(a.views       + frac * (b.views       - a.views)),
-                        videos:      a.videos
-                    });
-                }
-            }
-            // Push the last anchor
-            estStats.push({ ...rawStats[rawStats.length - 1] });
-        } else {
-            estStats = rawStats;
-        }
-
-        // --- PHASE 1: VIEW SMOOTHENING ---
-        const viewChanges = [];
-        for (let i = 0; i < estStats.length; i++) {
-            if (i === 0 || i === estStats.length - 1 || estStats[i].views !== estStats[i - 1].views) {
-                viewChanges.push(i);
-            }
-        }
-
-        // Global fallback velocity for dead segments
-        const totalV = estStats[estStats.length - 1].views - estStats[0].views;
-        const totalT = new Date(estStats[estStats.length - 1].recorded_at).getTime() - new Date(estStats[0].recorded_at).getTime();
-        const globalVelocity = totalV / (totalT || 1);
-
-        for (let k = 0; k < viewChanges.length - 1; k++) {
-            const startIdx = viewChanges[k];
-            const endIdx = viewChanges[k+1];
-            const startView = estStats[startIdx].views;
-            const endView = estStats[endIdx].views;
-            const startTime = new Date(estStats[startIdx].recorded_at).getTime();
-            const endTime = new Date(estStats[endIdx].recorded_at).getTime();
-
-            if (endView === startView) {
-                // Determine velocity: try previous segment, then next segment, then global fallback
-                let velocity = 0;
-                if (k > 0) {
-                    const prevStart = viewChanges[k-1];
-                    const prevEnd = viewChanges[k];
-                    velocity = (estStats[prevEnd].views - estStats[prevStart].views) / 
-                               (new Date(estStats[prevEnd].recorded_at).getTime() - new Date(estStats[prevStart].recorded_at).getTime() || 1);
-                } else if (k < viewChanges.length - 2) {
-                    const nextStart = viewChanges[k+1];
-                    const nextEnd = viewChanges[k+2];
-                    velocity = (estStats[nextEnd].views - estStats[nextStart].views) / 
-                               (new Date(estStats[nextEnd].recorded_at).getTime() - new Date(estStats[nextStart].recorded_at).getTime() || 1);
-                }
-                
-                // Final fallback if local neighbors are dead
-                if (velocity <= 0) velocity = globalVelocity;
-
-                if (velocity > 0) {
-                    for (let j = startIdx + 1; j <= endIdx; j++) {
-                        const deltaT = new Date(estStats[j].recorded_at).getTime() - startTime;
-                        estStats[j].views = Math.floor(startView + (deltaT * velocity));
-                    }
-                }
-            } else {
-                // Linear interpolation for views
-                const totalTime = endTime - startTime;
-                const totalView = endView - startView;
-                for (let j = startIdx + 1; j < endIdx; j++) {
-                    const deltaT = new Date(estStats[j].recorded_at).getTime() - startTime;
-                    estStats[j].views = Math.floor(startView + (totalView * (deltaT / totalTime)));
-                }
-            }
-        }
-
-        // --- PHASE 2: SUBSCRIBER ESTIMATION ---
-        // Strategy: smooth eased interpolation between real API anchor points,
-        // plus a tiny sine wobble so it never looks flat.
-        // This guarantees NO V-shapes because we always move monotonically
-        // from startSub to endSub with a natural ease curve.
-
-        const getTruncationRes = (val) => {
-            if (val >= 100000000) return 1000000;
-            if (val >= 10000000) return 100000;
-            if (val >= 1000000)  return 10000;
-            if (val >= 100000)   return 1000;
-            return 1;
-        };
-
-        // Smoothstep easing: s-curve from 0→1
-        const smoothstep = (t) => t * t * (3 - 2 * t);
-
-        // Collect the real API anchor indices (original rawStats boundaries)
-        // These are the points that actually came from the API (spaced ~24h apart)
-        const anchorIndices = [0];
-        if (needsExpansion) {
-            // Each original daily point is separated by ~24 hourly slots
-            let srcIdx = 0;
-            for (let i = 0; i < rawStats.length - 1; i++) {
-                const tA = new Date(rawStats[i].recorded_at).getTime();
-                const tB = new Date(rawStats[i + 1].recorded_at).getTime();
-                const hours = Math.round((tB - tA) / ONE_HOUR_MS);
-                srcIdx += hours;
-                anchorIndices.push(srcIdx);
-            }
-        } else {
-            for (let i = 1; i < estStats.length; i++) anchorIndices.push(i);
-        }
-
-        // Audit Shield: remove reverting spikes from anchor list before interpolating
-        const cleanedAnchors = [anchorIndices[0]];
-        for (let i = 1; i < anchorIndices.length - 1; i++) {
-            const prevIdx = anchorIndices[i - 1];
-            const currIdx = anchorIndices[i];
-            const nextIdx = anchorIndices[i + 1];
-            const prevSub = estStats[prevIdx].subscribers;
-            const currSub = estStats[currIdx].subscribers;
-            const nextSub = estStats[nextIdx].subscribers;
-            const res = getTruncationRes(currSub);
-            const jumpIn  = Math.abs(currSub - prevSub);
-            const jumpOut = Math.abs(nextSub - currSub);
-            const netMove = Math.abs(nextSub - prevSub);
-            // Discard if it's a big spike that immediately reverts
-            if (jumpIn > res * 0.4 && jumpOut > res * 0.4 && netMove < res * 0.15) continue;
-            cleanedAnchors.push(currIdx);
-        }
-        cleanedAnchors.push(anchorIndices[anchorIndices.length - 1]);
-
-        // Interpolate smoothly between each pair of cleaned anchors
-        for (let k = 0; k < cleanedAnchors.length - 1; k++) {
-            const startIdx = cleanedAnchors[k];
-            const endIdx   = cleanedAnchors[k + 1];
-            const startSub = estStats[startIdx].subscribers;
-            const endSub   = estStats[endIdx].subscribers;
-            const res      = getTruncationRes(startSub);
-            const wobble   = res * 0.02; // max ±2% of truncation resolution
-
-            const span = endIdx - startIdx;
-            for (let j = startIdx + 1; j < endIdx; j++) {
-                const t    = (j - startIdx) / span;
-                const eased = smoothstep(t);
-                // Sine wobble: one full cycle per segment, amplitude ±wobble
-                const sinePhase = t * Math.PI * 2;
-                const noise = Math.sin(sinePhase + startIdx * 0.7) * wobble;
-                estStats[j].subscribers = Math.round(
-                    startSub + (endSub - startSub) * eased + noise
-                );
-            }
-        }
-
-        // --- PHASE 3: GAUSSIAN SMOOTHING (11-point kernel) ---
-        const smoothedSubs = estStats.map(s => s.subscribers);
-        const weights = [0.02, 0.05, 0.08, 0.12, 0.15, 0.16, 0.15, 0.12, 0.08, 0.05, 0.02];
-        const wSum = weights.reduce((a, b) => a + b, 0);
-        const half = Math.floor(weights.length / 2);
-        const smoothed2 = [...smoothedSubs];
-        for (let i = half; i < estStats.length - half; i++) {
-            let val = 0;
-            for (let w = 0; w < weights.length; w++) {
-                val += smoothedSubs[i - half + w] * weights[w];
-            }
-            smoothed2[i] = Math.round(val / wSum);
-        }
-        for (let i = 0; i < estStats.length; i++) {
-            estStats[i].subscribers = smoothed2[i];
-        }
-
-        return estStats;
-    };
-
-
     const downloadCSV = () => {
         if (!currentChannelData) return;
         
@@ -1105,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
         link.setAttribute("href", encodedUri);
         
         const granularity = granularitySelect.value;
-        link.setAttribute("download", `${currentChannelData.title}_${isEstimating ? 'estimated_' : ''}analytics_${granularity}.csv`);
+        link.setAttribute("download", `${currentChannelData.title}_analytics_${granularity}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
