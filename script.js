@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('YT Analytics v8.2 Initialized');
+    console.log('YT Analytics v8.3 Initialized');
     const channelInput = document.getElementById('channelInput');
     const searchBtn = document.getElementById('searchBtn');
     const loading = document.getElementById('loading');
@@ -118,14 +118,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fetchProxied = async (url) => {
         const proxies = [
+            (u) => `https://allorigins.hexlet.app/raw?url=${encodeURIComponent(u)}`,
             (u) => `https://api.cors.lol/?url=${encodeURIComponent(u)}`,
             (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}&t=${Date.now()}`,
-            (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
         ];
 
         const tryProxy = async (getProxyUrl) => {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 4000); // 4s per proxy
+            const id = setTimeout(() => controller.abort(), 10000); // 10s to allow full 1MB+ VidIQ history downloads
 
             try {
                 const pUrl = getProxyUrl(url);
@@ -164,6 +164,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const searchChannels = async (query) => {
+        if (/^UC[\w-]{22}$/.test(query)) {
+            return { results: [{ id: query, title: query }] };
+        }
+
         try {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), 5000);
@@ -323,9 +327,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
             item.addEventListener('click', () => {
-                channelInput.value = res.id;
+                channelInput.value = res.title || res.id;
                 suggestions.classList.add('hidden');
-                handleSearch();
+                handleSearch(res);
             });
             suggestions.appendChild(item);
         });
@@ -339,9 +343,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Core Search Logic ---
-    const handleSearch = async () => {
+    const handleSearch = async (selectedItem = null) => {
+        const directItem = (selectedItem && selectedItem.id) ? selectedItem : null;
         const query = channelInput.value.trim();
-        if (!query) return;
+        if (!directItem && !query) return;
         
         // KILL OLD PROCESSES
         const searchId = ++currentSearchId;
@@ -358,21 +363,24 @@ document.addEventListener('DOMContentLoaded', () => {
         showState('loading');
         
         try {
-            const cleanQuery = query
-                .replace(/https?:\/\/(www\.)?youtube\.com\/(channel\/|user\/|c\/|@)?/g, '')
-                .replace(/\/$/g, '');
+            let searchItem = directItem;
+            if (!searchItem) {
+                const cleanQuery = query
+                    .replace(/https?:\/\/(www\.)?youtube\.com\/(channel\/|user\/|c\/|@)?/g, '')
+                    .replace(/\/$/g, '');
 
-            const searchData = await searchChannels(cleanQuery);
+                const searchData = await searchChannels(cleanQuery);
 
-            if (!searchData || !searchData.results || searchData.results.length === 0) {
-                throw new Error('No channel found matching your input.');
+                if (!searchData || !searchData.results || searchData.results.length === 0) {
+                    throw new Error('No channel found matching your input.');
+                }
+                searchItem = searchData.results[0];
             }
 
-            const channelId = searchData.results[0].id;
+            const channelId = searchItem.id;
             const today = new Date().toISOString().split('T')[0];
             const fromDate = '2005-04-23'; 
             
-            const searchItem = searchData.results[0];
             let statsData = null;
             try {
                 statsData = await fetchProxied(`https://api.vidiq.com/youtube/channels/public/stats?ids=${channelId}&from=${fromDate}&to=${today}`);
